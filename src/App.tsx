@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-shell';
 import {
   Container,
   Paper,
@@ -14,7 +15,8 @@ import {
   Divider,
   ThemeProvider,
   createTheme,
-  CssBaseline
+  CssBaseline,
+  Avatar
 } from '@mui/material';
 import {
   PlayArrow as StartIcon,
@@ -23,7 +25,10 @@ import {
   CheckCircle,
   Schedule,
   DarkMode as DarkModeIcon,
-  LightMode as LightModeIcon
+  LightMode as LightModeIcon,
+  SportsEsports as GameIcon,
+  Extension as ModIcon,
+  GitHub as GitHubIcon
 } from '@mui/icons-material';
 
 const darkTheme = createTheme({
@@ -107,7 +112,7 @@ function App() {
 
   const addLog = useCallback((message: string) => {
     const newLog: LogEntry = {
-      id: Date.now(),
+      id: Date.now() + Math.random(),
       timestamp: new Date().toLocaleTimeString(),
       message,
     };
@@ -118,7 +123,7 @@ function App() {
     try {
       addLog('进程限制开始b（￣▽￣）d　');
       setLoading(true);
-      
+
       const result = await invoke<ProcessStatus>('restrict_processes');
       setProcessStatus(result);
       setTargetCore(result.target_core);
@@ -189,7 +194,8 @@ function App() {
 
   useEffect(() => {
     addLog('FuckACE已启动，开始法克');
-  }, [addLog]);
+    startMonitoring();
+  }, [addLog, startMonitoring]);
 
   const getProcessStatusColor = (found: boolean, restricted: boolean) => {
     if (!found) return 'default';
@@ -205,178 +211,232 @@ function App() {
     setDarkMode(!darkMode);
   };
 
+  const openExternalLink = async (url: string) => {
+    try {
+      await open(url);
+    } catch (error) {
+      console.error('打开链接失败:', error);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   return (
     <ThemeProvider theme={darkMode ? darkTheme : createTheme()}>
       <CssBaseline />
-      <Container maxWidth="md" sx={{ py: 4 }}>
-        <Paper elevation={3} sx={{ p: 4, mb: 3, position: 'relative' }}>
+      <Container maxWidth="lg" sx={{ py: 2 }}>
+        <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
           <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Box flex={1}>
-              <Typography variant="h3" component="h1" align="center" gutterBottom color="primary">
-                FuckACE
-              </Typography>
-              <Typography variant="subtitle1" align="center" color="text.secondary" gutterBottom>
-                自动监控并限制ACE进程
-              </Typography>
-            </Box>
-            <Button
-              variant="outlined"
-              startIcon={darkMode ? <LightModeIcon /> : <DarkModeIcon />}
-              onClick={toggleDarkMode}
-              sx={{ minWidth: 'auto', px: 2 }}
-              size="small"
-            >
-              {darkMode ? '浅色' : '暗色'}
-            </Button>
-          </Box>
-        </Paper>
-
-        
-        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-          <Box display="flex" flexDirection="column" gap={2}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="body1">
-                <strong>监控状态:</strong>
-              </Typography>
-              <Chip
-                icon={isMonitoring ? <CheckCircle /> : <Schedule />}
-                label={isMonitoring ? '监控中' : '已停止'}
-                color={isMonitoring ? 'success' : 'default'}
-              />
-            </Box>
-            
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="body1">
-                <strong>下次执行:</strong>
-              </Typography>
-              <Chip
-                label={`${countdown}秒`}
-                color="primary"
-                variant="outlined"
-              />
-            </Box>
-
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="body1">
-                <strong>目标核心:</strong>
-              </Typography>
-              <Chip
-                label={targetCore !== null ? `核心 ${targetCore}` : '检测中...'}
-                color="info"
-                variant="outlined"
-              />
-            </Box>
-
-            {loading && <LinearProgress />}
-          </Box>
-        </Paper>
-
-        
-        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            目标进程状态
-          </Typography>
-          <List>
-            <ListItem
-              secondaryAction={
-                <Chip
-                  label={getProcessStatusText(
-                    processStatus?.sguard64_found || false,
-                    processStatus?.sguard64_restricted || false
-                  )}
-                  color={getProcessStatusColor(
-                    processStatus?.sguard64_found || false,
-                    processStatus?.sguard64_restricted || false
-                  )}
+            <Box display="flex" alignItems="center" gap={2}>
+                <Avatar 
+                  src="/logo.png" 
+                  sx={{ width: 48, height: 48 }}
+                  variant="rounded"
                 />
-              }
-            >
-              <ListItemText primary="SGuard64.exe" />
-            </ListItem>
-            <Divider />
-            <ListItem
-              secondaryAction={
-                <Chip
-                  label={getProcessStatusText(
-                    processStatus?.sguardsvc64_found || false,
-                    processStatus?.sguardsvc64_restricted || false
-                  )}
-                  color={getProcessStatusColor(
-                    processStatus?.sguardsvc64_found || false,
-                    processStatus?.sguardsvc64_restricted || false
-                  )}
-                />
-              }
-            >
-              <ListItemText primary="SGuardSvc64.exe" />
-            </ListItem>
-          </List>
-        </Paper>
-
-        
-        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-          <Box display="flex" gap={2} justifyContent="center" flexWrap="wrap">
-            <Button
-              variant="contained"
-              startIcon={<StartIcon />}
-              onClick={startMonitoring}
-              disabled={isMonitoring || loading}
-              size="large"
-            >
-              启动监控
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<StopIcon />}
-              onClick={stopMonitoring}
-              disabled={!isMonitoring || loading}
-              color="secondary"
-              size="large"
-            >
-              停止监控
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<ManualIcon />}
-              onClick={manualExecute}
-              disabled={!isMonitoring || loading}
-              color="info"
-              size="large"
-            >
-              立即执行
-            </Button>
-          </Box>
-        </Paper>    <Paper elevation={2} sx={{ p: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            操作日志
-          </Typography>
-          <Box
-            sx={{
-              maxHeight: 200,
-              overflowY: 'auto',
-              border: '1px solid',
-              borderColor: 'divider',
-              borderRadius: 1,
-              p: 2,
-              backgroundColor: 'background.default',
-            }}
-          >
-            {logs.map((log) => (
-              <Typography
-                key={log.id}
-                variant="body2"
-                sx={{
-                  fontFamily: 'monospace',
-                  fontSize: '0.875rem',
-                  py: 0.5,
-                  borderBottom: '1px solid #eee',
-                }}
+              <Box>
+                <Typography variant="h4" component="h1" color="primary">
+                  FuckACE
+                </Typography>
+                <Typography variant="subtitle2" color="text.secondary">
+                  自动监控并限制ACE进程
+                </Typography>
+              </Box>
+            </Box>
+            <Box display="flex" gap={1} alignItems="center">
+              <Button
+                variant="outlined"
+                startIcon={<GameIcon />}
+                onClick={async () => await openExternalLink('https://www.mikugame.icu/')}
+                sx={{ minWidth: 'auto', px: 1 }}
+                size="small"
+                title="MikuGame - 初音游戏库"
               >
-                [{log.timestamp}] {log.message}
-              </Typography>
-            ))}
+                找游戏
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<ModIcon />}
+                onClick={async () => await openExternalLink('https://www.mikumod.com/')}
+                sx={{ minWidth: 'auto', px: 1 }}
+                size="small"
+                title="MikuMod - 游戏模组社区"
+              >
+                找模组
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<GitHubIcon />}
+                onClick={async () => await openExternalLink('https://github.com/shshouse')}
+                sx={{ minWidth: 'auto', px: 1 }}
+                size="small"
+                title="作者: shshouse"
+              >
+                shshouse
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={darkMode ? <LightModeIcon /> : <DarkModeIcon />}
+                onClick={toggleDarkMode}
+                sx={{ minWidth: 'auto', px: 1 }}
+                size="small"
+              >
+                {darkMode ? '浅色' : '暗色'}
+              </Button>
+            </Box>
           </Box>
         </Paper>
+
+        <Box display="flex" flexDirection="column" gap={2}>
+          <Box display="flex" gap={2}>
+            <Paper elevation={2} sx={{ p: 2, flex: 1 }}>
+              <Typography variant="h6" gutterBottom>监控状态</Typography>
+              <Box display="flex" flexDirection="column" gap={1.5}>
+                <Box display="flex" justifyContent="space-between" alignItems="center">
+                  <Typography variant="body2">监控状态:</Typography>
+                  <Chip
+                    icon={isMonitoring ? <CheckCircle /> : <Schedule />}
+                    label={isMonitoring ? '监控中' : '已停止'}
+                    color={isMonitoring ? 'success' : 'default'}
+                    size="small"
+                  />
+                </Box>
+                
+                <Box display="flex" justifyContent="space-between" alignItems="center">
+                  <Typography variant="body2">下次执行:</Typography>
+                  <Chip
+                    label={`${countdown}秒`}
+                    color="primary"
+                    variant="outlined"
+                    size="small"
+                  />
+                </Box>
+
+                <Box display="flex" justifyContent="space-between" alignItems="center">
+                  <Typography variant="body2">目标核心:</Typography>
+                  <Chip
+                    label={targetCore !== null ? `核心 ${targetCore}` : '检测中...'}
+                    color="info"
+                    variant="outlined"
+                    size="small"
+                  />
+                </Box>
+
+                {loading && <LinearProgress sx={{ mt: 1 }} />}
+              </Box>
+            </Paper>
+
+            <Paper elevation={2} sx={{ p: 2, flex: 1 }}>
+              <Typography variant="h6" gutterBottom>进程状态</Typography>
+              <List dense>
+                <ListItem
+                  secondaryAction={
+                    <Chip
+                      label={getProcessStatusText(
+                        processStatus?.sguard64_found || false,
+                        processStatus?.sguard64_restricted || false
+                      )}
+                      color={getProcessStatusColor(
+                        processStatus?.sguard64_found || false,
+                        processStatus?.sguard64_restricted || false
+                      )}
+                      size="small"
+                    />
+                  }
+                  sx={{ py: 0.5 }}
+                >
+                  <ListItemText primary="SGuard64.exe" primaryTypographyProps={{ variant: 'body2' }} />
+                </ListItem>
+                <Divider />
+                <ListItem
+                  secondaryAction={
+                    <Chip
+                      label={getProcessStatusText(
+                        processStatus?.sguardsvc64_found || false,
+                        processStatus?.sguardsvc64_restricted || false
+                      )}
+                      color={getProcessStatusColor(
+                        processStatus?.sguardsvc64_found || false,
+                        processStatus?.sguardsvc64_restricted || false
+                      )}
+                      size="small"
+                    />
+                  }
+                  sx={{ py: 0.5 }}
+                >
+                  <ListItemText primary="SGuardSvc64.exe" primaryTypographyProps={{ variant: 'body2' }} />
+                </ListItem>
+              </List>
+            </Paper>
+
+            <Paper elevation={2} sx={{ p: 2, flex: 1 }}>
+              <Typography variant="h6" gutterBottom>控制面板</Typography>
+              <Box display="flex" flexDirection="column" gap={1.5}>
+                <Button
+                  variant="contained"
+                  startIcon={<StartIcon />}
+                  onClick={startMonitoring}
+                  disabled={isMonitoring || loading}
+                  size="medium"
+                  fullWidth
+                >
+                  启动监控
+                </Button>
+                <Button
+                  variant="contained"
+                  startIcon={<StopIcon />}
+                  onClick={stopMonitoring}
+                  disabled={!isMonitoring || loading}
+                  color="secondary"
+                  size="medium"
+                  fullWidth
+                >
+                  停止监控
+                </Button>
+                <Button
+                  variant="contained"
+                  startIcon={<ManualIcon />}
+                  onClick={manualExecute}
+                  disabled={!isMonitoring || loading}
+                  color="info"
+                  size="medium"
+                  fullWidth
+                >
+                  立即执行
+                </Button>
+              </Box>
+            </Paper>
+          </Box>
+
+          <Paper elevation={2} sx={{ p: 2 }}>
+            <Typography variant="h6" gutterBottom>操作日志</Typography>
+            <Box
+              sx={{
+                height: 120,
+                overflowY: 'auto',
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+                p: 1,
+                backgroundColor: 'background.default',
+              }}
+            >
+              {logs.map((log) => (
+                <Typography
+                  key={log.id}
+                  variant="body2"
+                  sx={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.75rem',
+                    py: 0.25,
+                    borderBottom: '1px solid',
+                    borderColor: 'divider',
+                  }}
+                >
+                  [{log.timestamp}] {log.message}
+                </Typography>
+              ))}
+            </Box>
+          </Paper>
+        </Box>
       </Container>
     </ThemeProvider>
   );

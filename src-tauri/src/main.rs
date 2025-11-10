@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    FuckACE_lib::run()
+    fuck_ace_lib::run()
 }

@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use sysinfo::{System, Pid};
-use std::sync::Mutex;
 use tauri::{Emitter, State};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -13,9 +12,7 @@ struct RestrictResult {
     message: String,
 }
 
-struct AppState {
-    system: Mutex<System>,
-}
+struct AppState;
 
 fn find_target_core() -> (u32, u64) {
     match detect_e_cores() {
@@ -204,9 +201,8 @@ fn stop_timer() -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .manage(AppState {
-            system: Mutex::new(System::new()),
-        })
+        .plugin(tauri_plugin_shell::init())
+        .manage(AppState)
         .invoke_handler(tauri::generate_handler![restrict_processes, get_system_info, start_timer, stop_timer])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

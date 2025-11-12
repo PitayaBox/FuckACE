@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
 import {
@@ -16,7 +16,9 @@ import {
   ThemeProvider,
   createTheme,
   CssBaseline,
-  Avatar
+  Avatar,
+  Switch,
+  FormControlLabel
 } from '@mui/material';
 import {
   PlayArrow as StartIcon,
@@ -90,6 +92,8 @@ interface ProcessStatus {
   sguard64_restricted: boolean;
   sguardsvc64_found: boolean;
   sguardsvc64_restricted: boolean;
+  weixin_found: boolean;
+  weixin_restricted: boolean;
   message: string;
 }
 
@@ -97,6 +101,23 @@ interface LogEntry {
   id: number;
   timestamp: string;
   message: string;
+}
+
+interface SystemInfo {
+  cpu_model: string;
+  cpu_cores: number;
+  cpu_logical_cores: number;
+  os_name: string;
+  os_version: string;
+  is_admin: boolean;
+  total_memory_gb: number;
+}
+
+interface ProcessPerformance {
+  pid: number;
+  name: string;
+  cpu_usage: number;
+  memory_mb: number;
 }
 
 function App() {
@@ -107,6 +128,10 @@ function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [darkMode, setDarkMode] = useState(true);
+  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+  const logContainerRef = useRef<HTMLDivElement>(null);
+  const [performance, setPerformance] = useState<ProcessPerformance[]>([]);
+  const [aggressiveMode, setAggressiveMode] = useState(false);
 
   let countdownTimer: number | null = null;
 
@@ -124,7 +149,9 @@ function App() {
       addLog('进程限制开始b（￣▽￣）d　');
       setLoading(true);
 
-      const result = await invoke<ProcessStatus>('restrict_processes');
+      const result = await invoke<ProcessStatus>('restrict_processes', { 
+        aggressiveMode: aggressiveMode 
+      });
       setProcessStatus(result);
       setTargetCore(result.target_core);
       
@@ -135,19 +162,19 @@ function App() {
     } finally {
       setLoading(false);
     }
-  }, [addLog]);
+  }, [addLog, aggressiveMode]);
 
   const startMonitoring = useCallback(async () => {
     try {
-      await invoke('start_timer');
+      await invoke('start_timer', { aggressiveMode: aggressiveMode });
       setIsMonitoring(true);
-      addLog('启动进程监控');
+      addLog(`启动进程监控 (${aggressiveMode ? '激进模式' : '标准模式'})`);
       await executeProcessRestriction();
     } catch (error) {
       addLog(`启动监控失败: ${error}`);
       setIsMonitoring(false);
     }
-  }, [addLog, executeProcessRestriction]);
+  }, [addLog, executeProcessRestriction, aggressiveMode]);
 
   const stopMonitoring = useCallback(async () => {
     try {
@@ -192,10 +219,51 @@ function App() {
     };
   }, [isMonitoring, executeProcessRestriction]);
 
+  const fetchSystemInfo = useCallback(async () => {
+    try {
+      const info = await invoke<SystemInfo>('get_system_info');
+      setSystemInfo(info);
+      addLog(`系统信息已加载: ${info.os_name} ${info.os_version}`);
+      addLog(`CPU: ${info.cpu_model}`);
+      addLog(`核心: ${info.cpu_cores}物理/${info.cpu_logical_cores}逻辑`);
+      addLog(`内存: ${info.total_memory_gb.toFixed(2)} GB`);
+      
+      if (!info.is_admin) {
+        addLog('小春未以管理员权限运行，部分功能可能受限');
+      } else {
+        addLog('小春已获取管理员权限，正在降低ACE占用');
+      }
+    } catch (error) {
+      addLog(`获取系统信息失败: ${error}`);
+    }
+  }, [addLog]);
+
+  const fetchPerformance = useCallback(async () => {
+    try {
+      const perf = await invoke<ProcessPerformance[]>('get_process_performance');
+      setPerformance(perf);
+    } catch (error) {
+      console.error('获取性能数据失败:', error);
+    }
+  }, []);
+
   useEffect(() => {
-    addLog('FuckACE已启动，开始法克');
+    addLog('FuckACE已启动，开始法克ACE');
+    fetchSystemInfo();
     startMonitoring();
-  }, [addLog, startMonitoring]);
+
+    const perfInterval = setInterval(fetchPerformance, 5000);
+
+    return () => {
+      clearInterval(perfInterval);
+    };
+  }, [addLog, startMonitoring, fetchSystemInfo, fetchPerformance]);
+
+  useEffect(() => {
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [logs]);
 
   const getProcessStatusColor = (found: boolean, restricted: boolean) => {
     if (!found) return 'default';
@@ -223,21 +291,21 @@ function App() {
   return (
     <ThemeProvider theme={darkMode ? darkTheme : createTheme()}>
       <CssBaseline />
-      <Container maxWidth="lg" sx={{ py: 2 }}>
-        <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
+      <Container maxWidth="lg" sx={{ py: 1, height: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <Paper elevation={3} sx={{ p: 1.5, mb: 1 }}>
           <Box display="flex" justifyContent="space-between" alignItems="center">
             <Box display="flex" alignItems="center" gap={2}>
                 <Avatar 
                   src="/logo.png" 
-                  sx={{ width: 48, height: 48 }}
+                  sx={{ width: 36, height: 36 }}
                   variant="rounded"
                 />
               <Box>
-                <Typography variant="h4" component="h1" color="primary">
+                <Typography variant="h5" component="h1" color="primary" sx={{ lineHeight: 1.2 }}>
                   FuckACE
                 </Typography>
-                <Typography variant="subtitle2" color="text.secondary">
-                  自动监控并限制ACE进程
+                <Typography variant="caption" color="text.secondary">
+                  小春正在持续监控并限制ACE占用
                 </Typography>
               </Box>
             </Box>
@@ -270,7 +338,7 @@ function App() {
                 size="small"
                 title="作者: shshouse"
               >
-                shshouse
+                作者github
               </Button>
               <Button
                 variant="outlined"
@@ -285,11 +353,11 @@ function App() {
           </Box>
         </Paper>
 
-        <Box display="flex" flexDirection="column" gap={2}>
-          <Box display="flex" gap={2}>
-            <Paper elevation={2} sx={{ p: 2, flex: 1 }}>
-              <Typography variant="h6" gutterBottom>监控状态</Typography>
-              <Box display="flex" flexDirection="column" gap={1.5}>
+        <Box display="flex" flexDirection="column" gap={1} sx={{ flex: 1, overflow: 'hidden' }}>
+          <Box display="flex" gap={1}>
+            <Paper elevation={2} sx={{ p: 1.5, flex: 1, minWidth: 0, maxWidth: '100%' }}>
+              <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>监控状态</Typography>
+              <Box display="flex" flexDirection="column" gap={0.8} sx={{ maxHeight: 150, overflow: 'hidden' }}>
                 <Box display="flex" justifyContent="space-between" alignItems="center">
                   <Typography variant="body2">监控状态:</Typography>
                   <Chip
@@ -324,52 +392,148 @@ function App() {
               </Box>
             </Paper>
 
-            <Paper elevation={2} sx={{ p: 2, flex: 1 }}>
-              <Typography variant="h6" gutterBottom>进程状态</Typography>
-              <List dense>
-                <ListItem
-                  secondaryAction={
+            <Paper elevation={2} sx={{ p: 1.5, flex: 1, minWidth: 0, maxWidth: '100%' }}>
+              <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>进程状态</Typography>
+              <List dense sx={{ maxHeight: 150, overflowY: 'auto' }}>
+                <ListItem secondaryAction={
                     <Chip
-                      label={getProcessStatusText(
-                        processStatus?.sguard64_found || false,
-                        processStatus?.sguard64_restricted || false
-                      )}
-                      color={getProcessStatusColor(
-                        processStatus?.sguard64_found || false,
-                        processStatus?.sguard64_restricted || false
-                      )}
+                      label={getProcessStatusText(processStatus?.sguard64_found || false, processStatus?.sguard64_restricted || false)}
+                      color={getProcessStatusColor(processStatus?.sguard64_found || false, processStatus?.sguard64_restricted || false)}
                       size="small"
                     />
                   }
-                  sx={{ py: 0.5 }}
+                  sx={{ py: 0.3 }}
                 >
-                  <ListItemText primary="SGuard64.exe" primaryTypographyProps={{ variant: 'body2' }} />
+                  <ListItemText primary="SGuard64.exe" primaryTypographyProps={{ variant: 'body2', fontSize: '0.85rem' }} />
                 </ListItem>
                 <Divider />
-                <ListItem
-                  secondaryAction={
+                <ListItem secondaryAction={
                     <Chip
-                      label={getProcessStatusText(
-                        processStatus?.sguardsvc64_found || false,
-                        processStatus?.sguardsvc64_restricted || false
-                      )}
-                      color={getProcessStatusColor(
-                        processStatus?.sguardsvc64_found || false,
-                        processStatus?.sguardsvc64_restricted || false
-                      )}
+                      label={getProcessStatusText(processStatus?.sguardsvc64_found || false, processStatus?.sguardsvc64_restricted || false)}
+                      color={getProcessStatusColor(processStatus?.sguardsvc64_found || false, processStatus?.sguardsvc64_restricted || false)}
                       size="small"
                     />
                   }
-                  sx={{ py: 0.5 }}
+                  sx={{ py: 0.3 }}
                 >
-                  <ListItemText primary="SGuardSvc64.exe" primaryTypographyProps={{ variant: 'body2' }} />
+                  <ListItemText primary="SGuardSvc64.exe" primaryTypographyProps={{ variant: 'body2', fontSize: '0.85rem' }} />
+                </ListItem>
+                <Divider />
+                <ListItem secondaryAction={
+                    <Chip
+                      label={getProcessStatusText(processStatus?.weixin_found || false, processStatus?.weixin_restricted || false)}
+                      color={getProcessStatusColor(processStatus?.weixin_found || false, processStatus?.weixin_restricted || false)}
+                      size="small"
+                    />
+                  }
+                  sx={{ py: 0.3 }}
+                >
+                  <ListItemText primary="Weixin.exe" primaryTypographyProps={{ variant: 'body2', fontSize: '0.85rem' }} />
                 </ListItem>
               </List>
             </Paper>
 
-            <Paper elevation={2} sx={{ p: 2, flex: 1 }}>
-              <Typography variant="h6" gutterBottom>控制面板</Typography>
-              <Box display="flex" flexDirection="column" gap={1.5}>
+            <Paper elevation={2} sx={{ p: 1.5, flex: 1, minWidth: 0, maxWidth: '100%' }}>
+              <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>系统信息</Typography>
+              {systemInfo ? (
+                <Box display="flex" flexDirection="column" gap={0.5} sx={{ maxHeight: 150, overflow: 'hidden' }}>
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <Typography variant="caption" color="text.secondary">CPU:</Typography>
+                    <Typography variant="caption" noWrap sx={{ maxWidth: '65%' }} title={systemInfo.cpu_model}>
+                      {systemInfo.cpu_model.split(' ').slice(-2).join(' ')}
+                    </Typography>
+                  </Box>
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <Typography variant="caption" color="text.secondary">核心:</Typography>
+                    <Typography variant="caption">{systemInfo.cpu_cores}P / {systemInfo.cpu_logical_cores}L</Typography>
+                  </Box>
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <Typography variant="caption" color="text.secondary">系统:</Typography>
+                    <Typography variant="caption">{systemInfo.os_name} {systemInfo.os_version.split('.')[0]}</Typography>
+                  </Box>
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <Typography variant="caption" color="text.secondary">内存:</Typography>
+                    <Typography variant="caption">{systemInfo.total_memory_gb.toFixed(1)} GB</Typography>
+                  </Box>
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <Typography variant="caption" color="text.secondary">权限:</Typography>
+                    <Box display="flex" alignItems="center" gap={0.5}>
+                      <Typography variant="caption">{systemInfo.is_admin ? '管理员' : '普通用户'}</Typography>
+                      {systemInfo.is_admin && <CheckCircle color="success" sx={{ fontSize: 14 }} />}
+                    </Box>
+                  </Box>
+                </Box>
+              ) : (
+                <Typography variant="body2" color="text.secondary">加载中...</Typography>
+              )}
+            </Paper>
+          </Box>
+
+          <Box display="flex" gap={1}>
+            <Paper elevation={2} sx={{ p: 1.5, flex: 1, minWidth: 0, maxWidth: '100%' }}>
+              <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>性能监控</Typography>
+              {performance.length > 0 ? (
+                <List dense sx={{ maxHeight: 180, overflowY: 'auto' }}>
+                  {performance.map((proc) => (
+                    <Box key={proc.pid}>
+                      <ListItem sx={{ py: 1 }}>
+                        <ListItemText
+                          primary={
+                            <Box display="flex" justifyContent="space-between" alignItems="center">
+                              <Typography variant="body2" fontWeight="500">
+                                {proc.name} (PID: {proc.pid})
+                              </Typography>
+                              <Chip 
+                                label={`CPU: ${proc.cpu_usage.toFixed(1)}%`}
+                                size="small"
+                                color={proc.cpu_usage > 10 ? 'error' : proc.cpu_usage > 5 ? 'warning' : 'success'}
+                              />
+                            </Box>
+                          }
+                          secondary={
+                            <Box mt={0.5}>
+                              <Typography variant="caption" display="block">
+                                内存: {proc.memory_mb.toFixed(2)} MB
+                              </Typography>
+                              <LinearProgress 
+                                variant="determinate" 
+                                value={Math.min(proc.cpu_usage, 100)} 
+                                sx={{ mt: 0.5, height: 6, borderRadius: 1 }}
+                                color={proc.cpu_usage > 10 ? 'error' : proc.cpu_usage > 5 ? 'warning' : 'success'}
+                              />
+                            </Box>
+                          }
+                        />
+                      </ListItem>
+                      <Divider />
+                    </Box>
+                  ))}
+                </List>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  未检测到目标进程
+                </Typography>
+              )}
+            </Paper>
+
+            <Paper elevation={2} sx={{ p: 1.5, flex: 1, minWidth: 0, maxWidth: '100%' }}>
+              <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>控制面板</Typography>
+              <Box display="flex" flexDirection="column" gap={1} sx={{ maxHeight: 180 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={aggressiveMode}
+                      onChange={(e) => setAggressiveMode(e.target.checked)}
+                      disabled={isMonitoring}
+                      color="warning"
+                    />
+                  }
+                  label={
+                    <Typography variant="body2">
+                      完全限制模式{aggressiveMode && '(额外对ACE进程开启效能模式,I/O和内存优先级降低)'}
+                    </Typography>
+                  }
+                />
                 <Button
                   variant="contained"
                   startIcon={<StartIcon />}
@@ -406,16 +570,18 @@ function App() {
             </Paper>
           </Box>
 
-          <Paper elevation={2} sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>操作日志</Typography>
+          <Paper elevation={2} sx={{ p: 1.5, flex: '0 0 auto', maxWidth: '100%' }}>
+            <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>操作日志</Typography>
             <Box
+              ref={logContainerRef}
               sx={{
-                height: 120,
+                height: 80,
+                maxHeight: 80,
                 overflowY: 'auto',
                 border: '1px solid',
                 borderColor: 'divider',
                 borderRadius: 1,
-                p: 1,
+                p: 0.75,
                 backgroundColor: 'background.default',
               }}
             >
@@ -425,10 +591,9 @@ function App() {
                   variant="body2"
                   sx={{
                     fontFamily: 'monospace',
-                    fontSize: '0.75rem',
-                    py: 0.25,
-                    borderBottom: '1px solid',
-                    borderColor: 'divider',
+                    fontSize: '0.7rem',
+                    py: 0.15,
+                    lineHeight: 1.4,
                   }}
                 >
                   [{log.timestamp}] {log.message}

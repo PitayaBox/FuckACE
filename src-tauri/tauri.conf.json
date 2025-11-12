@@ -5,7 +5,7 @@
   "identifier": "com.shshouse.FuckACE",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:8787",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
@@ -14,8 +14,10 @@
     "windows": [
       {
         "title": "FuckACE",
-        "width": 800,
-        "height": 600
+        "width": 900,
+        "height": 700,
+        "resizable": true,
+        "fullscreen": false
       }
     ],
     "security": {

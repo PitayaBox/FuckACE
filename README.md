@@ -1,12 +1,10 @@
 # FuckACE
-<img width="128" height="128" alt="图标" src="https://github.com/user-attachments/assets/9865b9bb-61c7-47e9-b5f6-f1c2c479bbbd" />
-<img width="1336" height="1071" alt="image" src="https://github.com/user-attachments/assets/bf1de5f9-771f-41da-a503-0c81f36ceddc" />
 
-
-FuckACE是一个用来限制八宝粥ACE进程的免安装软件，可以持续自动对ACE进程进行诸多限制，以降低ACE对电脑的性能影响。
-## 喜欢的话请点点star，谢谢！Ciallo～(∠・ω )⌒☆
+## FuckACE是一个用来限制八宝粥ACE进程的免安装软件，可以持续自动对ACE进程进行诸多限制，以降低ACE对电脑的性能影响。
+### 喜欢的话请点点star，谢谢！Ciallo～(∠・ω )⌒☆
 相关使用教程请看B站视频：
 - [FuckACE使用教程]()
+<img width="1336" height="1071" alt="image" src="https://github.com/user-attachments/assets/bf1de5f9-771f-41da-a503-0c81f36ceddc" />
 
 注意：
 1.软件不会彻底关闭ACE，只是对其占用进行限制，别开桂嗷。

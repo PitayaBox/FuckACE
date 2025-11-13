@@ -7,7 +7,7 @@
 - [直接下载](https://www.mikugame.icu/modpacks/80801631-36b1-4f9e-8604-127c6236848a)
   
 相关使用教程请看B站视频：
-- [FuckACE使用教程]()
+- [FuckACE使用教程](https://www.bilibili.com/video/BV1ePCnBpEWp/)
 
 <img width="1336" height="1071" alt="image" src="https://github.com/user-attachments/assets/bf1de5f9-771f-41da-a503-0c81f36ceddc" />
 

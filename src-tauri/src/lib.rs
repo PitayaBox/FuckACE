@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 use sysinfo::{System, Pid};
-use tauri::{Emitter, State};
+use tauri::{Emitter, State, Manager, AppHandle, WindowEvent};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use winreg::enums::*;
+use winreg::RegKey;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct RestrictResult {
@@ -405,7 +409,7 @@ fn set_process_memory_priority(pid: Pid) -> (bool, Option<String>) {
     }
 }
 
-fn restrict_target_processes(aggressive_mode: bool) -> RestrictResult {
+fn restrict_target_processes(enable_basic_cpu_limit: bool, enable_efficiency_mode: bool, enable_io_priority: bool, enable_memory_priority: bool) -> RestrictResult {
     enable_debug_privilege();
     
     let mut system = System::new_all();
@@ -422,7 +426,14 @@ fn restrict_target_processes(aggressive_mode: bool) -> RestrictResult {
     
     let mut message = String::new();
     
-    let mode_str = if aggressive_mode { "激进模式" } else { "标准模式" };
+    let mode_parts: Vec<&str> = vec![
+        if enable_basic_cpu_limit { "基础CPU限制" } else { "" },
+        if enable_efficiency_mode { "效率模式" } else { "" },
+        if enable_io_priority { "I/O优先级" } else { "" },
+        if enable_memory_priority { "内存优先级" } else { "" },
+    ].into_iter().filter(|s| !s.is_empty()).collect();
+    
+    let mode_str = if mode_parts.is_empty() { "标准模式".to_string() } else { mode_parts.join("+") };
     message.push_str(&format!("限制模式: {}\n", mode_str));
     
     if is_e_core {
@@ -439,26 +450,29 @@ fn restrict_target_processes(aggressive_mode: bool) -> RestrictResult {
         if process_name.contains("sguard64.exe") {
             sguard64_found = true;
             
-            let (affinity_ok, affinity_err, actual_core) = set_process_affinity_with_fallback(*pid, core_mask, is_e_core);
-            let priority_ok = set_process_priority(*pid);
-            
-            let (efficiency_ok, io_priority_ok, mem_priority_ok) = if aggressive_mode {
-                let (eff_ok, _) = set_process_efficiency_mode(*pid);
-                let (io_ok, _) = set_process_io_priority(*pid);
-                let (mem_ok, _) = set_process_memory_priority(*pid);
-                (eff_ok, io_ok, mem_ok)
+            let (affinity_ok, affinity_err, actual_core) = if enable_basic_cpu_limit {
+                set_process_affinity_with_fallback(*pid, core_mask, is_e_core)
             } else {
-                let (eff_ok, _) = if !priority_ok {
+                (false, None, 0)
+            };
+            let priority_ok = if enable_basic_cpu_limit {
+                set_process_priority(*pid)
+            } else {
+                false
+            };
+            
+            let (efficiency_ok, io_priority_ok, mem_priority_ok) = {
+                let (eff_ok, _) = if enable_efficiency_mode {
                     set_process_efficiency_mode(*pid)
                 } else {
                     (false, None)
                 };
-                let (io_ok, _) = if !priority_ok && !eff_ok {
+                let (io_ok, _) = if enable_io_priority {
                     set_process_io_priority(*pid)
                 } else {
                     (false, None)
                 };
-                let (mem_ok, _) = if !priority_ok && !eff_ok && !io_ok {
+                let (mem_ok, _) = if enable_memory_priority {
                     set_process_memory_priority(*pid)
                 } else {
                     (false, None)
@@ -502,26 +516,29 @@ fn restrict_target_processes(aggressive_mode: bool) -> RestrictResult {
         if process_name.contains("sguardsvc64.exe") {
             sguardsvc64_found = true;
             
-            let (affinity_ok, affinity_err, actual_core) = set_process_affinity_with_fallback(*pid, core_mask, is_e_core);
-            let priority_ok = set_process_priority(*pid);
-            
-            let (efficiency_ok, io_priority_ok, mem_priority_ok) = if aggressive_mode {
-                let (eff_ok, _) = set_process_efficiency_mode(*pid);
-                let (io_ok, _) = set_process_io_priority(*pid);
-                let (mem_ok, _) = set_process_memory_priority(*pid);
-                (eff_ok, io_ok, mem_ok)
+            let (affinity_ok, affinity_err, actual_core) = if enable_basic_cpu_limit {
+                set_process_affinity_with_fallback(*pid, core_mask, is_e_core)
             } else {
-                let (eff_ok, _) = if !priority_ok {
+                (false, None, 0)
+            };
+            let priority_ok = if enable_basic_cpu_limit {
+                set_process_priority(*pid)
+            } else {
+                false
+            };
+            
+            let (efficiency_ok, io_priority_ok, mem_priority_ok) = {
+                let (eff_ok, _) = if enable_efficiency_mode {
                     set_process_efficiency_mode(*pid)
                 } else {
                     (false, None)
                 };
-                let (io_ok, _) = if !priority_ok && !eff_ok {
+                let (io_ok, _) = if enable_io_priority {
                     set_process_io_priority(*pid)
                 } else {
                     (false, None)
                 };
-                let (mem_ok, _) = if !priority_ok && !eff_ok && !io_ok {
+                let (mem_ok, _) = if enable_memory_priority {
                     set_process_memory_priority(*pid)
                 } else {
                     (false, None)
@@ -565,26 +582,29 @@ fn restrict_target_processes(aggressive_mode: bool) -> RestrictResult {
         if process_name.contains("weixin.exe") {
             weixin_found = true;
             
-            let (affinity_ok, affinity_err, actual_core) = set_process_affinity_with_fallback(*pid, core_mask, is_e_core);
-            let priority_ok = set_process_priority(*pid);
-            
-            let (efficiency_ok, io_priority_ok, mem_priority_ok) = if aggressive_mode {
-                let (eff_ok, _) = set_process_efficiency_mode(*pid);
-                let (io_ok, _) = set_process_io_priority(*pid);
-                let (mem_ok, _) = set_process_memory_priority(*pid);
-                (eff_ok, io_ok, mem_ok)
+            let (affinity_ok, affinity_err, actual_core) = if enable_basic_cpu_limit {
+                set_process_affinity_with_fallback(*pid, core_mask, is_e_core)
             } else {
-                let (eff_ok, _) = if !priority_ok {
+                (false, None, 0)
+            };
+            let priority_ok = if enable_basic_cpu_limit {
+                set_process_priority(*pid)
+            } else {
+                false
+            };
+            
+            let (efficiency_ok, io_priority_ok, mem_priority_ok) = {
+                let (eff_ok, _) = if enable_efficiency_mode {
                     set_process_efficiency_mode(*pid)
                 } else {
                     (false, None)
                 };
-                let (io_ok, _) = if !priority_ok && !eff_ok {
+                let (io_ok, _) = if enable_io_priority {
                     set_process_io_priority(*pid)
                 } else {
                     (false, None)
                 };
-                let (mem_ok, _) = if !priority_ok && !eff_ok && !io_ok {
+                let (mem_ok, _) = if enable_memory_priority {
                     set_process_memory_priority(*pid)
                 } else {
                     (false, None)
@@ -653,8 +673,14 @@ fn restrict_target_processes(aggressive_mode: bool) -> RestrictResult {
 }
 
 #[tauri::command]
-fn restrict_processes(_state: State<AppState>, aggressive_mode: bool) -> RestrictResult {
-    let result = restrict_target_processes(aggressive_mode);
+fn restrict_processes(
+    _state: State<AppState>,
+    enable_basic_cpu_limit: bool,
+    enable_efficiency_mode: bool,
+    enable_io_priority: bool,
+    enable_memory_priority: bool,
+) -> RestrictResult {
+    let result = restrict_target_processes(enable_basic_cpu_limit, enable_efficiency_mode, enable_io_priority, enable_memory_priority);
     result
 }
 
@@ -786,7 +812,13 @@ fn get_system_info() -> SystemInfo {
 }
 
 #[tauri::command]
-async fn start_timer(app_handle: tauri::AppHandle, aggressive_mode: bool) -> Result<String, String> {
+async fn start_timer(
+    app_handle: tauri::AppHandle,
+    enable_basic_cpu_limit: bool,
+    enable_efficiency_mode: bool,
+    enable_io_priority: bool,
+    enable_memory_priority: bool,
+) -> Result<String, String> {
     let app_handle_clone = app_handle.clone();
     
     tauri::async_runtime::spawn(async move {
@@ -795,7 +827,7 @@ async fn start_timer(app_handle: tauri::AppHandle, aggressive_mode: bool) -> Res
         loop {
             interval.tick().await;
             
-            let result = restrict_target_processes(aggressive_mode);
+            let result = restrict_target_processes(enable_basic_cpu_limit, enable_efficiency_mode, enable_io_priority, enable_memory_priority);
             
             if let Err(e) = app_handle_clone.emit("timer_tick", &result) {
                 eprintln!("发送定时器事件失败: {}", e);
@@ -842,13 +874,287 @@ fn get_process_performance() -> Vec<ProcessPerformance> {
     performances
 }
 
+fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
+    let show = MenuItem::with_id(app, "show", "显示窗口", true, None::<&str>)?;
+    let hide = MenuItem::with_id(app, "hide", "隐藏到托盘", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    
+    let menu = Menu::with_items(app, &[
+        &show,
+        &PredefinedMenuItem::separator(app)?,
+        &hide,
+        &PredefinedMenuItem::separator(app)?,
+        &quit,
+    ])?;
+    
+    let _tray = TrayIconBuilder::with_id("main-tray")
+        .tooltip("FuckACE")
+        .icon(app.default_window_icon().unwrap().clone())
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_tray_icon_event(|tray, event| {
+            match event {
+                TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, .. } => {
+                    let app = tray.app_handle();
+                    if let Some(window) = app.get_webview_window("main") {
+                        if window.is_visible().unwrap_or(false) {
+                            let _ = window.hide();
+                        } else {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                }
+                _ => {}
+            }
+        })
+        .on_menu_event(|app, event| {
+            match event.id().as_ref() {
+                "quit" => {
+                    std::process::exit(0);
+                }
+                "show" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+                "hide" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.hide();
+                    }
+                }
+                _ => {}
+            }
+        })
+        .build(app)?;
+    
+    Ok(())
+}
+
+#[tauri::command]
+async fn show_close_dialog(app_handle: AppHandle) -> Result<String, String> {
+    if let Some(window) = app_handle.get_webview_window("main") {
+        window.hide().unwrap();
+    }
+    Ok("已最小化到托盘".to_string())
+}
+
+fn get_exe_path() -> Result<String, String> {
+    std::env::current_exe()
+        .map_err(|e| format!("获取程序路径失败: {}", e))?
+        .to_str()
+        .ok_or_else(|| "路径转换失败".to_string())
+        .map(|s| s.to_string())
+}
+
+#[tauri::command]
+fn enable_autostart() -> Result<String, String> {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let path = r"Software\Microsoft\Windows\CurrentVersion\Run";
+    
+    let (key, _) = hkcu
+        .create_subkey(path)
+        .map_err(|e| format!("打开注册表失败: {}", e))?;
+    
+    let exe_path = get_exe_path()?;
+    
+    key.set_value("FuckACE", &exe_path)
+        .map_err(|e| format!("设置注册表值失败: {}", e))?;
+    
+    Ok("开机自启动已启用".to_string())
+}
+
+#[tauri::command]
+fn disable_autostart() -> Result<String, String> {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let path = r"Software\Microsoft\Windows\CurrentVersion\Run";
+    
+    let key = hkcu
+        .open_subkey_with_flags(path, KEY_WRITE)
+        .map_err(|e| format!("打开注册表失败: {}", e))?;
+    
+    key.delete_value("FuckACE")
+        .map_err(|e| format!("删除注册表值失败: {}", e))?;
+    
+    Ok("开机自启动已禁用".to_string())
+}
+
+#[tauri::command]
+fn check_autostart() -> Result<bool, String> {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let path = r"Software\Microsoft\Windows\CurrentVersion\Run";
+    
+    let key = hkcu
+        .open_subkey(path)
+        .map_err(|_| "打开注册表失败".to_string())?;
+    
+    match key.get_value::<String, _>("FuckACE") {
+        Ok(_) => Ok(true),
+        Err(_) => Ok(false),
+    }
+}
+
+#[tauri::command]
+fn modify_registry_priority() -> Result<String, String> {
+    if !is_elevated() {
+        return Err("需要管理员权限才能修改注册表".to_string());
+    }
+    
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let base_path = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options";
+    
+    let mut results = Vec::new();
+    
+    // 配置: (进程名, CPU优先级, I/O优先级)
+    let configs = vec![
+        ("DeltaForceClient-Win64-Shipping.exe", 3u32, 3u32),
+        ("SGuard64.exe", 1u32, 1u32),
+        ("SGuardSvc64.exe", 1u32, 1u32),
+    ];
+    
+    for (exe_name, cpu_priority, io_priority) in configs {
+        let key_path = format!(r"{}\{}\PerfOptions", base_path, exe_name);
+        
+        match hklm.create_subkey(&key_path) {
+            Ok((key, _)) => {
+                let mut success = true;
+                
+                // 设置 CPU 优先级
+                if let Err(e) = key.set_value("CpuPriorityClass", &cpu_priority) {
+                    results.push(format!("{}:设置CPU优先级失败:{}", exe_name, e));
+                    success = false;
+                }
+                
+                // 设置 I/O 优先级
+                if let Err(e) = key.set_value("IoPriority", &io_priority) {
+                    results.push(format!("{}:设置I/O优先级失败:{}", exe_name, e));
+                    success = false;
+                }
+                
+                if success {
+                    results.push(format!("{}:设置成功(CPU:{},I/O:{})", exe_name, cpu_priority, io_priority));
+                }
+            }
+            Err(e) => {
+                results.push(format!("{}:创建注册表项失败:{}", exe_name, e));
+            }
+        }
+    }
+    
+    Ok(results.join("\n"))
+}
+
+#[tauri::command]
+fn check_registry_priority() -> Result<String, String> {
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let base_path = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options";
+    
+    let mut results = Vec::new();
+    
+    let exe_names = vec![
+        "DeltaForceClient-Win64-Shipping.exe",
+        "SGuard64.exe",
+        "SGuardSvc64.exe",
+    ];
+    
+    for exe_name in exe_names {
+        let key_path = format!(r"{}\{}\PerfOptions", base_path, exe_name);
+        
+        match hklm.open_subkey(&key_path) {
+            Ok(key) => {
+                let cpu_priority: Result<u32, _> = key.get_value("CpuPriorityClass");
+                let io_priority: Result<u32, _> = key.get_value("IoPriority");
+                
+                let cpu_str = match cpu_priority {
+                    Ok(v) => format!("CPU:{}", v),
+                    Err(_) => "CPU:未设置".to_string(),
+                };
+                
+                let io_str = match io_priority {
+                    Ok(v) => format!("I/O:{}", v),
+                    Err(_) => "I/O:未设置".to_string(),
+                };
+                
+                results.push(format!("{}:[{},{}]", exe_name, cpu_str, io_str));
+            }
+            Err(_) => {
+                results.push(format!("{}:未配置", exe_name));
+            }
+        }
+    }
+    
+    Ok(results.join("\n"))
+}
+
+#[tauri::command]
+fn reset_registry_priority() -> Result<String, String> {
+    if !is_elevated() {
+        return Err("需要管理员权限才能修改注册表".to_string());
+    }
+    
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let base_path = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options";
+    
+    let mut results = Vec::new();
+    
+    let exe_names = vec![
+        "DeltaForceClient-Win64-Shipping.exe",
+        "SGuard64.exe",
+        "SGuardSvc64.exe",
+    ];
+    
+    for exe_name in exe_names {
+        let exe_key_path = format!(r"{}\{}", base_path, exe_name);
+        
+        match hklm.open_subkey_with_flags(&exe_key_path, KEY_WRITE) {
+            Ok(exe_key) => {
+                match exe_key.delete_subkey("PerfOptions") {
+                    Ok(_) => {
+                        results.push(format!("{}:已恢复默认", exe_name));
+                    }
+                    Err(e) => {
+                        results.push(format!("{}:删除失败:{}", exe_name, e));
+                    }
+                }
+            }
+            Err(_) => {
+                results.push(format!("{}:未找到配置项", exe_name));
+            }
+        }
+    }
+    
+    Ok(results.join("\n"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_process::init())
         .manage(AppState)
-        .invoke_handler(tauri::generate_handler![restrict_processes, get_system_info, start_timer, stop_timer, get_process_performance])
+        .setup(|app| {
+            setup_tray(app.handle())?;
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            match event {
+                WindowEvent::CloseRequested { api, .. } => {
+                    api.prevent_close();
+                    let app_handle = window.app_handle().clone();
+                    
+                    tauri::async_runtime::spawn(async move {
+                        let result = show_close_dialog(app_handle).await;
+                        if let Err(e) = result {
+                            eprintln!("显示关闭对话框失败: {}", e);
+                        }
+                    });
+                }
+                _ => {}
+            }
+        })
+        .invoke_handler(tauri::generate_handler![restrict_processes, get_system_info, start_timer, stop_timer, get_process_performance, show_close_dialog, enable_autostart, disable_autostart, check_autostart, modify_registry_priority, check_registry_priority, reset_registry_priority])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

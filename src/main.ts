@@ -72,7 +72,7 @@ async function executeProcessRestriction() {
     
     if (sguard64StatusEl) {
       if (result.sguard64_found) {
-        sguard64StatusEl.textContent = result.sguard64_restricted ? '已限制' : '运行中';
+        sguard64StatusEl.textContent = result.sguard64_restricted ? '已限制' : '已发现，未限制';
         sguard64StatusEl.setAttribute('data-status', result.sguard64_restricted ? 'restricted' : 'running');
       } else {
         sguard64StatusEl.textContent = '未找到';
@@ -82,7 +82,7 @@ async function executeProcessRestriction() {
     
     if (sguardsvc64StatusEl) {
       if (result.sguardsvc64_found) {
-        sguardsvc64StatusEl.textContent = result.sguardsvc64_restricted ? '已限制' : '运行中';
+        sguardsvc64StatusEl.textContent = result.sguardsvc64_restricted ? '已限制' : '已发现，未限制';
         sguardsvc64StatusEl.setAttribute('data-status', result.sguardsvc64_restricted ? 'restricted' : 'running');
       } else {
         sguardsvc64StatusEl.textContent = '未找到';

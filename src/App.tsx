@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useOnlineUsers, useAnnouncements, useVersionCheck } from './hooks/useSupabase';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
+import { exit } from '@tauri-apps/plugin-process';
 import {
   Container,
   Paper,
@@ -18,7 +20,13 @@ import {
   CssBaseline,
   Avatar,
   Switch,
-  FormControlLabel
+  FormControlLabel,
+  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Badge
 } from '@mui/material';
 import {
   PlayArrow as StartIcon,
@@ -30,7 +38,11 @@ import {
   LightMode as LightModeIcon,
   SportsEsports as GameIcon,
   Extension as ModIcon,
-  GitHub as GitHubIcon
+  GitHub as GitHubIcon,
+  People as PeopleIcon,
+  Notifications as NotificationsIcon,
+  SystemUpdate as UpdateIcon,
+  Close as CloseIcon
 } from '@mui/icons-material';
 
 const darkTheme = createTheme({
@@ -131,9 +143,20 @@ function App() {
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const [performance, setPerformance] = useState<ProcessPerformance[]>([]);
-  const [aggressiveMode, setAggressiveMode] = useState(false);
+  const [enableBasicCpuLimit, setEnableBasicCpuLimit] = useState(true);
+  const [enableEfficiencyMode, setEnableEfficiencyMode] = useState(false);
+  const [enableIoPriority, setEnableIoPriority] = useState(false);
+  const [enableMemoryPriority, setEnableMemoryPriority] = useState(false);
+  const [autoStartEnabled, setAutoStartEnabled] = useState(false);
+  const [showAnnouncements, setShowAnnouncements] = useState(false);
+  const [showUpdateDialog, setShowUpdateDialog] = useState(false);
 
-  let countdownTimer: number | null = null;
+  // Supabase hooks
+  const { onlineCount } = useOnlineUsers();
+  const { announcements } = useAnnouncements();
+  const { latestVersion, hasUpdate } = useVersionCheck('0.4.0');
+
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const addLog = useCallback((message: string) => {
     const newLog: LogEntry = {
@@ -150,7 +173,10 @@ function App() {
       setLoading(true);
 
       const result = await invoke<ProcessStatus>('restrict_processes', { 
-        aggressiveMode: aggressiveMode 
+        enableBasicCpuLimit,
+        enableEfficiencyMode,
+        enableIoPriority,
+        enableMemoryPriority
       });
       setProcessStatus(result);
       setTargetCore(result.target_core);
@@ -162,27 +188,38 @@ function App() {
     } finally {
       setLoading(false);
     }
-  }, [addLog, aggressiveMode]);
+  }, [addLog, enableBasicCpuLimit, enableEfficiencyMode, enableIoPriority, enableMemoryPriority]);
 
   const startMonitoring = useCallback(async () => {
     try {
-      await invoke('start_timer', { aggressiveMode: aggressiveMode });
+      await invoke('start_timer', { 
+        enableBasicCpuLimit,
+        enableEfficiencyMode,
+        enableIoPriority,
+        enableMemoryPriority
+      });
       setIsMonitoring(true);
-      addLog(`启动进程监控 (${aggressiveMode ? '激进模式' : '标准模式'})`);
+      const modeStr = [
+        enableBasicCpuLimit && '基础CPU限制',
+        enableEfficiencyMode && '效率模式',
+        enableIoPriority && 'I/O优先级',
+        enableMemoryPriority && '内存优先级'
+      ].filter(Boolean).join('+') || '标准模式';
+      addLog(`启动进程监控 (${modeStr})`);
       await executeProcessRestriction();
     } catch (error) {
       addLog(`启动监控失败: ${error}`);
       setIsMonitoring(false);
     }
-  }, [addLog, executeProcessRestriction, aggressiveMode]);
+  }, [addLog, executeProcessRestriction, enableBasicCpuLimit, enableEfficiencyMode, enableIoPriority, enableMemoryPriority]);
 
   const stopMonitoring = useCallback(async () => {
     try {
       await invoke('stop_timer');
       setIsMonitoring(false);
-      if (countdownTimer) {
-        clearInterval(countdownTimer);
-        countdownTimer = null;
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
       }
       addLog('停止进程监控');
     } catch (error) {
@@ -191,17 +228,20 @@ function App() {
   }, [addLog]);
 
   const manualExecute = useCallback(async () => {
-    if (!isMonitoring) {
-      addLog('请先启动监控');
-      return;
-    }
-    addLog('手动执行限制操作');
+    addLog('执行一次性限制操作');
     await executeProcessRestriction();
-  }, [isMonitoring, addLog, executeProcessRestriction]);
+    addLog('操作完成，3秒后退出...');
+    setTimeout(() => {
+      exit(0).catch(err => {
+        console.error('退出失败:', err);
+        addLog(`退出失败: ${err}`);
+      });
+    }, 3000);
+  }, [addLog, executeProcessRestriction]);
 
   useEffect(() => {
     if (isMonitoring) {
-      countdownTimer = setInterval(() => {
+      countdownTimerRef.current = setInterval(() => {
         setCountdown(prev => {
           if (prev <= 1) {
             executeProcessRestriction();
@@ -213,8 +253,8 @@ function App() {
     }
 
     return () => {
-      if (countdownTimer) {
-        clearInterval(countdownTimer);
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
       }
     };
   }, [isMonitoring, executeProcessRestriction]);
@@ -247,23 +287,100 @@ function App() {
     }
   }, []);
 
+  const checkAutoStart = useCallback(async () => {
+    try {
+      const enabled = await invoke<boolean>('check_autostart');
+      setAutoStartEnabled(enabled);
+    } catch (error) {
+      console.error('检查自启动状态失败:', error);
+    }
+  }, []);
+
+  const toggleAutoStart = useCallback(async () => {
+    try {
+      if (autoStartEnabled) {
+        await invoke<string>('disable_autostart');
+        setAutoStartEnabled(false);
+        addLog('已禁用开机自启动');
+      } else {
+        await invoke<string>('enable_autostart');
+        setAutoStartEnabled(true);
+        addLog('已启用开机自启动');
+      }
+    } catch (error) {
+      addLog(`切换自启动失败: ${error}`);
+      console.error('切换自启动失败:', error);
+    }
+  }, [autoStartEnabled, addLog]);
+
+  const modifyRegistryPriority = useCallback(async () => {
+    try {
+      setLoading(true);
+      addLog('开始修改注册表优先级...');
+      const result = await invoke<string>('modify_registry_priority');
+      addLog('注册表修改完成:');
+      result.split('\n').forEach(line => addLog(line));
+    } catch (error) {
+      addLog(`修改注册表失败: ${error}`);
+      console.error('修改注册表失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [addLog]);
+
+  const checkRegistryPriority = useCallback(async () => {
+    try {
+      setLoading(true);
+      addLog('正在检查注册表状态...');
+      const result = await invoke<string>('check_registry_priority');
+      addLog('注册表状态:');
+      result.split('\n').forEach(line => addLog(line));
+    } catch (error) {
+      addLog(`检查注册表失败: ${error}`);
+      console.error('检查注册表失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [addLog]);
+
+  const resetRegistryPriority = useCallback(async () => {
+    try {
+      setLoading(true);
+      addLog('开始恢复注册表默认设置...');
+      const result = await invoke<string>('reset_registry_priority');
+      addLog('注册表恢复完成:');
+      result.split('\n').forEach(line => addLog(line));
+    } catch (error) {
+      addLog(`恢复注册表失败: ${error}`);
+      console.error('恢复注册表失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [addLog]);
+
   useEffect(() => {
     addLog('FuckACE已启动，开始法克ACE');
     fetchSystemInfo();
-    startMonitoring();
+    checkAutoStart();
 
     const perfInterval = setInterval(fetchPerformance, 5000);
 
     return () => {
       clearInterval(perfInterval);
     };
-  }, [addLog, startMonitoring, fetchSystemInfo, fetchPerformance]);
+  }, [addLog, fetchSystemInfo, fetchPerformance, checkAutoStart]);
 
   useEffect(() => {
     if (logContainerRef.current) {
       logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
     }
   }, [logs]);
+
+  useEffect(() => {
+    if (hasUpdate) {
+      setShowUpdateDialog(true);
+    }
+  }, [hasUpdate]);
 
   const getProcessStatusColor = (found: boolean, restricted: boolean) => {
     if (!found) return 'default';
@@ -302,49 +419,75 @@ function App() {
                 />
               <Box>
                 <Typography variant="h5" component="h1" color="primary" sx={{ lineHeight: 1.2 }}>
-                  FuckACE v0.1
+                  FuckACE v0.4.0
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   小春正在持续监控并限制ACE占用
                 </Typography>
               </Box>
             </Box>
-            <Box display="flex" gap={1} alignItems="center">
+            <Box display="flex" gap={0.5} alignItems="center" flexWrap="wrap">
+              <Badge badgeContent={onlineCount} color="success">
+                <Chip icon={<PeopleIcon />} label="在线" size="small" variant="outlined" />
+              </Badge>
+              <Badge badgeContent={announcements.length > 0 ? announcements.length : 0} color="info">
+                <Button
+                  variant="outlined"
+                  startIcon={<NotificationsIcon />}
+                  onClick={() => setShowAnnouncements(true)}
+                  sx={{ minWidth: 'auto', px: 0.8 }}
+                  size="small"
+                >
+                  公告
+                </Button>
+              </Badge>
+              <Badge badgeContent={hasUpdate ? 1 : 0} color="error">
+                <Button
+                  variant="outlined"
+                  startIcon={<UpdateIcon />}
+                  onClick={() => setShowUpdateDialog(true)}
+                  sx={{ minWidth: 'auto', px: 0.8 }}
+                  size="small"
+                  color={hasUpdate ? "error" : "success"}
+                >
+                  更新
+                </Button>
+              </Badge>
               <Button
                 variant="outlined"
                 startIcon={<GameIcon />}
                 onClick={async () => await openExternalLink('https://www.mikugame.icu/')}
-                sx={{ minWidth: 'auto', px: 1 }}
+                sx={{ minWidth: 'auto', px: 0.8 }}
                 size="small"
                 title="MikuGame - 初音游戏库"
               >
-                找游戏
+                游戏社区
               </Button>
               <Button
                 variant="outlined"
                 startIcon={<ModIcon />}
                 onClick={async () => await openExternalLink('https://www.mikumod.com/')}
-                sx={{ minWidth: 'auto', px: 1 }}
+                sx={{ minWidth: 'auto', px: 0.8 }}
                 size="small"
                 title="MikuMod - 游戏模组社区"
               >
-                找模组
+                模组社区
               </Button>
               <Button
                 variant="outlined"
                 startIcon={<GitHubIcon />}
-                onClick={async () => await openExternalLink('https://github.com/shshouse')}
-                sx={{ minWidth: 'auto', px: 1 }}
+                onClick={async () => await openExternalLink('https://afdian.com/a/shshouse')}
+                sx={{ minWidth: 'auto', px: 0.8 }}
                 size="small"
                 title="作者: shshouse"
               >
-                作者github
+                投喂作者
               </Button>
               <Button
                 variant="outlined"
                 startIcon={darkMode ? <LightModeIcon /> : <DarkModeIcon />}
                 onClick={toggleDarkMode}
-                sx={{ minWidth: 'auto', px: 1 }}
+                sx={{ minWidth: 'auto', px: 0.8 }}
                 size="small"
               >
                 {darkMode ? '浅色' : '暗色'}
@@ -516,62 +659,145 @@ function App() {
               )}
             </Paper>
 
-            <Paper elevation={2} sx={{ p: 1.5, flex: 1, minWidth: 0, maxWidth: '100%' }}>
+            <Paper elevation={2} sx={{ p: 1.5, flex: 1, minWidth: 0, maxWidth: '100%', display: 'flex', flexDirection: 'column' }}
+              >
               <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>控制面板</Typography>
-              <Box display="flex" flexDirection="column" gap={1} sx={{ maxHeight: 180 }}>
+              <Box display="grid" gridTemplateColumns="1fr 1fr 1fr" gap={0.8} sx={{ mb: 1 }}>
                 <FormControlLabel
                   control={
                     <Switch
-                      checked={aggressiveMode}
-                      onChange={(e) => setAggressiveMode(e.target.checked)}
+                      checked={enableBasicCpuLimit}
+                      onChange={(e) => setEnableBasicCpuLimit(e.target.checked)}
                       disabled={isMonitoring}
-                      color="warning"
+                      color="success"
+                      size="small"
                     />
                   }
                   label={
-                    <Typography variant="body2">
-                      完全限制模式{aggressiveMode && '(额外对ACE进程开启效能模式,I/O和内存优先级降低)'}
-                    </Typography>
+                    <Typography variant="caption">基础CPU限制</Typography>
                   }
+                  sx={{ m: 0 }}
                 />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={enableEfficiencyMode}
+                      onChange={(e) => setEnableEfficiencyMode(e.target.checked)}
+                      disabled={isMonitoring}
+                      color="warning"
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Typography variant="caption">效率模式</Typography>
+                  }
+                  sx={{ m: 0 }}
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={enableIoPriority}
+                      onChange={(e) => setEnableIoPriority(e.target.checked)}
+                      disabled={isMonitoring}
+                      color="error"
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Typography variant="caption">I/O优先级(建议仅执行一次)</Typography>
+                  }
+                  sx={{ m: 0 }}
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={enableMemoryPriority}
+                      onChange={(e) => setEnableMemoryPriority(e.target.checked)}
+                      disabled={isMonitoring}
+                      color="error"
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Typography variant="caption">内存优先级(建议仅执行一次)</Typography>
+                  }
+                  sx={{ m: 0 }}
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={autoStartEnabled}
+                      onChange={toggleAutoStart}
+                      color="primary"
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Typography variant="caption">开机自启动</Typography>
+                  }
+                  sx={{ m: 0 }}
+                />
+              </Box>
+              <Box display="flex" flexDirection="column" gap={0.6} sx={{ flex: 1, justifyContent: 'flex-end' }}>
                 <Button
                   variant="contained"
-                  startIcon={<StartIcon />}
-                  onClick={startMonitoring}
-                  disabled={isMonitoring || loading}
-                  size="medium"
+                  startIcon={isMonitoring ? <StopIcon /> : <StartIcon />}
+                  onClick={isMonitoring ? stopMonitoring : startMonitoring}
+                  disabled={loading}
+                  color={isMonitoring ? "secondary" : "primary"}
+                  size="small"
                   fullWidth
                 >
-                  启动监控
-                </Button>
-                <Button
-                  variant="contained"
-                  startIcon={<StopIcon />}
-                  onClick={stopMonitoring}
-                  disabled={!isMonitoring || loading}
-                  color="secondary"
-                  size="medium"
-                  fullWidth
-                >
-                  停止监控
+                  {isMonitoring ? '停止循环' : '循环执行(不建议)'}
                 </Button>
                 <Button
                   variant="contained"
                   startIcon={<ManualIcon />}
                   onClick={manualExecute}
-                  disabled={!isMonitoring || loading}
-                  color="info"
-                  size="medium"
+                  disabled={loading}
+                  color="warning"
+                  size="small"
                   fullWidth
                 >
-                  立即执行
+                  执行一次并退出
                 </Button>
+                <Button
+                  variant="contained"
+                  onClick={modifyRegistryPriority}
+                  disabled={loading || !systemInfo?.is_admin}
+                  color="error"
+                  size="small"
+                  fullWidth
+                >
+                  一键修改三角洲注册表(需管理员,最推荐做法,最保险)
+                </Button>
+                <Box display="flex" gap={0.6}>
+                  <Button
+                    variant="outlined"
+                    onClick={checkRegistryPriority}
+                    disabled={loading}
+                    color="info"
+                    size="small"
+                    fullWidth
+                  >
+                    检查状态
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    onClick={resetRegistryPriority}
+                    disabled={loading || !systemInfo?.is_admin}
+                    color="warning"
+                    size="small"
+                    fullWidth
+                  >
+                    恢复默认
+                  </Button>
+                </Box>
               </Box>
             </Paper>
           </Box>
 
           <Paper elevation={2} sx={{ p: 1.5, flex: '0 0 auto', maxWidth: '100%' }}>
-            <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>操作日志</Typography>
             <Box
               ref={logContainerRef}
               sx={{
@@ -602,9 +828,117 @@ function App() {
             </Box>
           </Paper>
         </Box>
-      </Container>
-    </ThemeProvider>
-  );
+
+            {/* 公告对话框 */}
+            <Dialog
+              open={showAnnouncements}
+              onClose={() => setShowAnnouncements(false)}
+              maxWidth="sm"
+              fullWidth
+            >
+              <DialogTitle>
+                <Box display="flex" justifyContent="space-between" alignItems="center">
+                  <Typography variant="h6">公告</Typography>
+                  <Button onClick={() => setShowAnnouncements(false)} size="small">
+                    <CloseIcon />
+                  </Button>
+                </Box>
+              </DialogTitle>
+              <DialogContent dividers>
+                {announcements.map((announcement) => (
+                  <Alert
+                    key={announcement.id}
+                    severity={
+                      announcement.priority === 'urgent' ? 'error' :
+                      announcement.priority === 'high' ? 'warning' :
+                      announcement.priority === 'low' ? 'info' : 'success'
+                    }
+                    sx={{ mb: 2 }}
+                  >
+                    <Typography variant="subtitle2" fontWeight="bold">
+                      {announcement.title}
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-line' }}>
+                      {announcement.content}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                      发布时间: {new Date(announcement.created_at).toLocaleDateString('zh-CN')}
+                    </Typography>
+                  </Alert>
+                ))}
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setShowAnnouncements(false)}>关闭</Button>
+              </DialogActions>
+            </Dialog>
+
+            {/* 更新提示对话框 */}
+            <Dialog
+              open={showUpdateDialog}
+              onClose={() => setShowUpdateDialog(false)}
+              maxWidth="sm"
+              fullWidth
+            >
+              <DialogTitle>
+                <Box display="flex" justifyContent="space-between" alignItems="center">
+                  <Typography variant="h6">{hasUpdate ? '发现新版本' : '版本检查'}</Typography>
+                  <Button onClick={() => setShowUpdateDialog(false)} size="small">
+                    <CloseIcon />
+                  </Button>
+                </Box>
+              </DialogTitle>
+              <DialogContent dividers>
+                {hasUpdate && latestVersion ? (
+                  <Box>
+                    <Alert severity={latestVersion.is_critical ? 'error' : 'info'} sx={{ mb: 2 }}>
+                      <Typography variant="subtitle1" fontWeight="bold">
+                        版本 {latestVersion.version}
+                        {latestVersion.is_critical && ' (重要更新)'}
+                      </Typography>
+                    </Alert>
+                    
+                    <Typography variant="subtitle2" gutterBottom fontWeight="bold">
+                      更新内容:
+                    </Typography>
+                    <Typography variant="body2" sx={{ whiteSpace: 'pre-line', mb: 2 }}>
+                      {latestVersion.changelog}
+                    </Typography>
+                    
+                    <Typography variant="caption" color="text.secondary">
+                      发布时间: {new Date(latestVersion.created_at).toLocaleDateString('zh-CN')}
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Box>
+                    <Alert severity="success" sx={{ mb: 2 }}>
+                      <Typography variant="subtitle1" fontWeight="bold">
+                        已是最新版本
+                      </Typography>
+                    </Alert>
+                    <Typography variant="body2" color="text.secondary">
+                      当前版本: v0.4.0
+                    </Typography>
+                  </Box>
+                )}
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setShowUpdateDialog(false)}>{hasUpdate ? '稍后更新' : '关闭'}</Button>
+                {hasUpdate && latestVersion && (
+                  <Button
+                    variant="contained"
+                    onClick={async () => {
+                      await openExternalLink(latestVersion.download_url);
+                    }}
+                    color="primary"
+                  >
+                    立即下载
+                  </Button>
+                )}
+              </DialogActions>
+            </Dialog>
+          </Container>
+        </ThemeProvider>
+      );
 }
 
 export default App;

@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+info
+src/supabaseClient.ts
+src/vite-env.d.ts
+src/hooks/

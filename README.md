@@ -11,7 +11,7 @@
 <img width="1336" height="1071" alt="image" src="https://github.com/user-attachments/assets/bf1de5f9-771f-41da-a503-0c81f36ceddc" />
 
 注意：
-1.软件不会彻底关闭ACE，只是对其占用进行限制，别开桂嗷。\n
+1.软件不会彻底关闭ACE，只是对其占用进行限制，别开桂嗷。<br>
 2.主包测试了大战场是没事的，但是不排除会误封的可能，请充分了解潜在风险，使用即代表已经了解并接受这些风险/(ㄒoㄒ)/~~
 
 ## 核心机制

@@ -150,11 +150,11 @@ function App() {
   const [autoStartEnabled, setAutoStartEnabled] = useState(false);
   const [showAnnouncements, setShowAnnouncements] = useState(false);
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
+  const [enableSupabase, setEnableSupabase] = useState(false);
 
-  // Supabase hooks
-  const { onlineCount } = useOnlineUsers();
-  const { announcements } = useAnnouncements();
-  const { latestVersion, hasUpdate } = useVersionCheck('0.4.0');
+  const { onlineCount, isConnected } = useOnlineUsers(enableSupabase);
+  const { announcements } = useAnnouncements(enableSupabase);
+  const { latestVersion, hasUpdate } = useVersionCheck('0.4.1', enableSupabase);
 
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -419,7 +419,7 @@ function App() {
                 />
               <Box>
                 <Typography variant="h5" component="h1" color="primary" sx={{ lineHeight: 1.2 }}>
-                  FuckACE v0.4.0
+                  FuckACE v0.4.1
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   小春正在持续监控并限制ACE占用
@@ -427,28 +427,43 @@ function App() {
               </Box>
             </Box>
             <Box display="flex" gap={0.5} alignItems="center" flexWrap="wrap">
-              <Badge badgeContent={onlineCount} color="success">
-                <Chip icon={<PeopleIcon />} label="在线" size="small" variant="outlined" />
+              <Badge badgeContent={enableSupabase ? onlineCount : '?'} color={enableSupabase && isConnected ? "success" : "default"}>
+                <Button
+                  variant="outlined"
+                  startIcon={<PeopleIcon />}
+                  onClick={() => setEnableSupabase(!enableSupabase)}
+                  sx={{ minWidth: 'auto', px: 0.8 }}
+                  size="small"
+                  color={enableSupabase && isConnected ? "success" : "inherit"}
+                >
+                  {enableSupabase ? (isConnected ? '在线' : '连接中') : '离线'}
+                </Button>
               </Badge>
-              <Badge badgeContent={announcements.length > 0 ? announcements.length : 0} color="info">
+              <Badge badgeContent={enableSupabase && announcements.length > 0 ? announcements.length : 0} color="info">
                 <Button
                   variant="outlined"
                   startIcon={<NotificationsIcon />}
-                  onClick={() => setShowAnnouncements(true)}
+                  onClick={() => {
+                    if (!enableSupabase) setEnableSupabase(true);
+                    setShowAnnouncements(true);
+                  }}
                   sx={{ minWidth: 'auto', px: 0.8 }}
                   size="small"
                 >
                   公告
                 </Button>
               </Badge>
-              <Badge badgeContent={hasUpdate ? 1 : 0} color="error">
+              <Badge badgeContent={enableSupabase && hasUpdate ? 1 : 0} color="error">
                 <Button
                   variant="outlined"
                   startIcon={<UpdateIcon />}
-                  onClick={() => setShowUpdateDialog(true)}
+                  onClick={() => {
+                    if (!enableSupabase) setEnableSupabase(true);
+                    setShowUpdateDialog(true);
+                  }}
                   sx={{ minWidth: 'auto', px: 0.8 }}
                   size="small"
-                  color={hasUpdate ? "error" : "success"}
+                  color={enableSupabase && hasUpdate ? "error" : "success"}
                 >
                   更新
                 </Button>
@@ -916,7 +931,7 @@ function App() {
                       </Typography>
                     </Alert>
                     <Typography variant="body2" color="text.secondary">
-                      当前版本: v0.4.0
+                      当前版本: v0.4.1
                     </Typography>
                   </Box>
                 )}

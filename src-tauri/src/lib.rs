@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sysinfo::{System, Pid};
-use tauri::{State, Manager, AppHandle, WindowEvent};
+use tauri::{State, Manager, AppHandle, WindowEvent, Emitter};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use winreg::enums::*;
@@ -903,10 +903,17 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 
 #[tauri::command]
 async fn show_close_dialog(app_handle: AppHandle) -> Result<String, String> {
+    //最小化到托盘＞﹏＜
     if let Some(window) = app_handle.get_webview_window("main") {
         window.hide().unwrap();
     }
     Ok("已最小化到托盘".to_string())
+}
+
+#[tauri::command]
+fn close_application(app_handle: AppHandle) -> Result<String, String> {
+    //退出FuckACE/(ㄒoㄒ)/~~
+    std::process::exit(0);
 }
 
 fn get_exe_path() -> Result<String, String> {
@@ -1170,14 +1177,12 @@ pub fn run() {
             match event {
                 WindowEvent::CloseRequested { api, .. } => {
                     api.prevent_close();
-                    let app_handle = window.app_handle().clone();
-                    
-                    tauri::async_runtime::spawn(async move {
-                        let result = show_close_dialog(app_handle).await;
-                        if let Err(e) = result {
-                            eprintln!("显示关闭对话框失败: {}", e);
+                    if let Err(e) = window.emit("show-close-confirm", ()) {
+                        eprintln!("发送关闭确认事件失败: {}", e);
+                        if let Some(window) = window.app_handle().get_webview_window("main") {
+                            let _ = window.hide();
                         }
-                    });
+                    }
                 }
                 _ => {}
             }
@@ -1187,6 +1192,7 @@ pub fn run() {
             get_system_info, 
             get_process_performance, 
             show_close_dialog, 
+            close_application,
             enable_autostart, 
             disable_autostart, 
             check_autostart, 

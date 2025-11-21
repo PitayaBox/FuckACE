@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useInitialData } from './hooks/useOptimizedSupabase';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
+import { Window } from '@tauri-apps/api/window';
 import {
   Container,
   Paper,
@@ -39,7 +40,8 @@ import {
   People as PeopleIcon,
   Notifications as NotificationsIcon,
   SystemUpdate as UpdateIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
+  Warning as WarningIcon
 } from '@mui/icons-material';
 
 const darkTheme = createTheme({
@@ -146,6 +148,7 @@ function App() {
   const [autoStartEnabled, setAutoStartEnabled] = useState(false);
   const [showAnnouncements, setShowAnnouncements] = useState(false);
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
 
   const { onlineCount, announcements, latestVersion, hasUpdate } = useInitialData('0.4.2');
@@ -331,6 +334,16 @@ function App() {
       logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
     }
   }, [logs]);
+
+  useEffect(() => {
+    const unlisten = Window.getCurrent().listen('show-close-confirm', () => {
+      setShowCloseConfirm(true);
+    });
+
+    return () => {
+      unlisten.then((fn: () => void) => fn());
+    };
+  }, []);
 
   useEffect(() => {
     if (hasUpdate) {
@@ -879,6 +892,57 @@ function App() {
                     立即下载
                   </Button>
                 )}
+              </DialogActions>
+            </Dialog>
+
+            {/* 关闭确认对话框 */}
+            <Dialog
+              open={showCloseConfirm}
+              onClose={() => setShowCloseConfirm(false)}
+              maxWidth="xs"
+              fullWidth
+            >
+              <DialogTitle>
+                <Box display="flex" alignItems="center" gap={1}>
+                  <WarningIcon color="warning" />
+                  <Typography variant="h6">确认关闭</Typography>
+                </Box>
+              </DialogTitle>
+              <DialogContent>
+                <Typography variant="body1" sx={{ mt: 1 }}>
+                  您确定要关闭应用程序吗？
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  选择"最小化到托盘"将保持程序在后台运行，选择"彻底退出"将关闭程序。
+                </Typography>
+              </DialogContent>
+              <DialogActions>
+                <Button 
+                  onClick={() => setShowCloseConfirm(false)}
+                  color="inherit"
+                >
+                  取消
+                </Button>
+                <Button 
+                  onClick={async () => {
+                    await invoke('show_close_dialog');
+                    setShowCloseConfirm(false);
+                  }}
+                  variant="outlined"
+                  color="primary"
+                >
+                  最小化到托盘
+                </Button>
+                <Button 
+                  onClick={async () => {
+                    // 彻底退出程序
+                    await invoke('close_application');
+                  }}
+                  variant="contained"
+                  color="error"
+                >
+                  彻底退出
+                </Button>
               </DialogActions>
             </Dialog>
           </Container>

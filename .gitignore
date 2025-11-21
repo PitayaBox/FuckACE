@@ -26,3 +26,5 @@ info
 src/utils
 src/hooks
 src/supabaseClient.ts
+
+portable

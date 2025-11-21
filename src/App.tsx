@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useOnlineUsers, useAnnouncements, useVersionCheck } from './hooks/useSupabase';
+import { useInitialData } from './hooks/useOptimizedSupabase';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
-import { exit } from '@tauri-apps/plugin-process';
 import {
   Container,
   Paper,
@@ -30,8 +29,6 @@ import {
 } from '@mui/material';
 import {
   PlayArrow as StartIcon,
-  Stop as StopIcon,
-  Refresh as ManualIcon,
   CheckCircle,
   Schedule,
   DarkMode as DarkModeIcon,
@@ -134,7 +131,6 @@ interface ProcessPerformance {
 
 function App() {
   const [isMonitoring, setIsMonitoring] = useState(false);
-  const [countdown, setCountdown] = useState(60);
   const [targetCore, setTargetCore] = useState<number | null>(null);
   const [processStatus, setProcessStatus] = useState<ProcessStatus | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -150,13 +146,9 @@ function App() {
   const [autoStartEnabled, setAutoStartEnabled] = useState(false);
   const [showAnnouncements, setShowAnnouncements] = useState(false);
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
-  const [enableSupabase, setEnableSupabase] = useState(false);
 
-  const { onlineCount, isConnected } = useOnlineUsers(enableSupabase);
-  const { announcements } = useAnnouncements(enableSupabase);
-  const { latestVersion, hasUpdate } = useVersionCheck('0.4.1', enableSupabase);
 
-  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { onlineCount, announcements, latestVersion, hasUpdate } = useInitialData('0.4.1');
 
   const addLog = useCallback((message: string) => {
     const newLog: LogEntry = {
@@ -190,14 +182,8 @@ function App() {
     }
   }, [addLog, enableBasicCpuLimit, enableEfficiencyMode, enableIoPriority, enableMemoryPriority]);
 
-  const startMonitoring = useCallback(async () => {
+  const executeOnce = useCallback(async () => {
     try {
-      await invoke('start_timer', { 
-        enableBasicCpuLimit,
-        enableEfficiencyMode,
-        enableIoPriority,
-        enableMemoryPriority
-      });
       setIsMonitoring(true);
       const modeStr = [
         enableBasicCpuLimit && '基础CPU限制',
@@ -205,59 +191,14 @@ function App() {
         enableIoPriority && 'I/O优先级',
         enableMemoryPriority && '内存优先级'
       ].filter(Boolean).join('+') || '标准模式';
-      addLog(`启动进程监控 (${modeStr})`);
+      addLog(`执行进程限制 (${modeStr})`);
       await executeProcessRestriction();
+      setIsMonitoring(false);
     } catch (error) {
-      addLog(`启动监控失败: ${error}`);
+      addLog(`执行失败: ${error}`);
       setIsMonitoring(false);
     }
   }, [addLog, executeProcessRestriction, enableBasicCpuLimit, enableEfficiencyMode, enableIoPriority, enableMemoryPriority]);
-
-  const stopMonitoring = useCallback(async () => {
-    try {
-      await invoke('stop_timer');
-      setIsMonitoring(false);
-      if (countdownTimerRef.current) {
-        clearInterval(countdownTimerRef.current);
-        countdownTimerRef.current = null;
-      }
-      addLog('停止进程监控');
-    } catch (error) {
-      addLog(`停止监控失败: ${error}`);
-    }
-  }, [addLog]);
-
-  const manualExecute = useCallback(async () => {
-    addLog('执行一次性限制操作');
-    await executeProcessRestriction();
-    addLog('操作完成，3秒后退出...');
-    setTimeout(() => {
-      exit(0).catch(err => {
-        console.error('退出失败:', err);
-        addLog(`退出失败: ${err}`);
-      });
-    }, 3000);
-  }, [addLog, executeProcessRestriction]);
-
-  useEffect(() => {
-    if (isMonitoring) {
-      countdownTimerRef.current = setInterval(() => {
-        setCountdown(prev => {
-          if (prev <= 1) {
-            executeProcessRestriction();
-            return 60;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-
-    return () => {
-      if (countdownTimerRef.current) {
-        clearInterval(countdownTimerRef.current);
-      }
-    };
-  }, [isMonitoring, executeProcessRestriction]);
 
   const fetchSystemInfo = useCallback(async () => {
     try {
@@ -323,6 +264,21 @@ function App() {
     } catch (error) {
       addLog(`修改注册表失败: ${error}`);
       console.error('修改注册表失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [addLog]);
+
+  const modifyValorantRegistryPriority = useCallback(async () => {
+    try {
+      setLoading(true);
+      addLog('开始修改瓦罗兰特注册表优先级...');
+      const result = await invoke<string>('modify_valorant_registry_priority');
+      addLog('瓦罗兰特注册表修改完成:');
+      result.split('\n').forEach(line => addLog(line));
+    } catch (error) {
+      addLog(`修改瓦罗兰特注册表失败: ${error}`);
+      console.error('修改瓦罗兰特注册表失败:', error);
     } finally {
       setLoading(false);
     }
@@ -427,43 +383,28 @@ function App() {
               </Box>
             </Box>
             <Box display="flex" gap={0.5} alignItems="center" flexWrap="wrap">
-              <Badge badgeContent={enableSupabase ? onlineCount : '?'} color={enableSupabase && isConnected ? "success" : "default"}>
-                <Button
-                  variant="outlined"
-                  startIcon={<PeopleIcon />}
-                  onClick={() => setEnableSupabase(!enableSupabase)}
-                  sx={{ minWidth: 'auto', px: 0.8 }}
-                  size="small"
-                  color={enableSupabase && isConnected ? "success" : "inherit"}
-                >
-                  {enableSupabase ? (isConnected ? '在线' : '连接中') : '离线'}
-                </Button>
+              <Badge badgeContent={onlineCount} color="success">
+                <Chip icon={<PeopleIcon />} label="在线" size="small" variant="outlined" />
               </Badge>
-              <Badge badgeContent={enableSupabase && announcements.length > 0 ? announcements.length : 0} color="info">
+              <Badge badgeContent={announcements.length > 0 ? announcements.length : 0} color="info">
                 <Button
                   variant="outlined"
                   startIcon={<NotificationsIcon />}
-                  onClick={() => {
-                    if (!enableSupabase) setEnableSupabase(true);
-                    setShowAnnouncements(true);
-                  }}
+                  onClick={() => setShowAnnouncements(true)}
                   sx={{ minWidth: 'auto', px: 0.8 }}
                   size="small"
                 >
                   公告
                 </Button>
               </Badge>
-              <Badge badgeContent={enableSupabase && hasUpdate ? 1 : 0} color="error">
+              <Badge badgeContent={hasUpdate ? 1 : 0} color="error">
                 <Button
                   variant="outlined"
                   startIcon={<UpdateIcon />}
-                  onClick={() => {
-                    if (!enableSupabase) setEnableSupabase(true);
-                    setShowUpdateDialog(true);
-                  }}
+                  onClick={() => setShowUpdateDialog(true)}
                   sx={{ minWidth: 'auto', px: 0.8 }}
                   size="small"
-                  color={enableSupabase && hasUpdate ? "error" : "success"}
+                  color={hasUpdate ? "error" : "success"}
                 >
                   更新
                 </Button>
@@ -476,7 +417,7 @@ function App() {
                 size="small"
                 title="MikuGame - 初音游戏库"
               >
-                游戏社区
+                游戏资源
               </Button>
               <Button
                 variant="outlined"
@@ -526,16 +467,6 @@ function App() {
                   />
                 </Box>
                 
-                <Box display="flex" justifyContent="space-between" alignItems="center">
-                  <Typography variant="body2">下次执行:</Typography>
-                  <Chip
-                    label={`${countdown}秒`}
-                    color="primary"
-                    variant="outlined"
-                    size="small"
-                  />
-                </Box>
-
                 <Box display="flex" justifyContent="space-between" alignItems="center">
                   <Typography variant="body2">目标核心:</Typography>
                   <Chip
@@ -756,25 +687,14 @@ function App() {
               <Box display="flex" flexDirection="column" gap={0.6} sx={{ flex: 1, justifyContent: 'flex-end' }}>
                 <Button
                   variant="contained"
-                  startIcon={isMonitoring ? <StopIcon /> : <StartIcon />}
-                  onClick={isMonitoring ? stopMonitoring : startMonitoring}
-                  disabled={loading}
-                  color={isMonitoring ? "secondary" : "primary"}
+                  startIcon={<StartIcon />}
+                  onClick={executeOnce}
+                  disabled={loading || isMonitoring}
+                  color="primary"
                   size="small"
                   fullWidth
                 >
-                  {isMonitoring ? '停止循环' : '循环执行(不建议)'}
-                </Button>
-                <Button
-                  variant="contained"
-                  startIcon={<ManualIcon />}
-                  onClick={manualExecute}
-                  disabled={loading}
-                  color="warning"
-                  size="small"
-                  fullWidth
-                >
-                  执行一次并退出
+                  立即执行
                 </Button>
                 <Button
                   variant="contained"
@@ -784,7 +704,17 @@ function App() {
                   size="small"
                   fullWidth
                 >
-                  一键修改三角洲注册表(需管理员,最推荐做法,最保险)
+                  一键优化三角洲注册表(需管理员)
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={modifyValorantRegistryPriority}
+                  disabled={loading || !systemInfo?.is_admin}
+                  color="secondary"
+                  size="small"
+                  fullWidth
+                >
+                  一键优化瓦罗兰特注册表(需管理员)
                 </Button>
                 <Box display="flex" gap={0.6}>
                   <Button

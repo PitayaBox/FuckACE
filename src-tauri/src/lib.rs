@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sysinfo::{System, Pid};
-use tauri::{Emitter, State, Manager, AppHandle, WindowEvent};
+use tauri::{State, Manager, AppHandle, WindowEvent};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use winreg::enums::*;
@@ -811,37 +811,6 @@ fn get_system_info() -> SystemInfo {
     }
 }
 
-#[tauri::command]
-async fn start_timer(
-    app_handle: tauri::AppHandle,
-    enable_basic_cpu_limit: bool,
-    enable_efficiency_mode: bool,
-    enable_io_priority: bool,
-    enable_memory_priority: bool,
-) -> Result<String, String> {
-    let app_handle_clone = app_handle.clone();
-    
-    tauri::async_runtime::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
-        
-        loop {
-            interval.tick().await;
-            
-            let result = restrict_target_processes(enable_basic_cpu_limit, enable_efficiency_mode, enable_io_priority, enable_memory_priority);
-            
-            if let Err(e) = app_handle_clone.emit("timer_tick", &result) {
-                eprintln!("发送定时器事件失败: {}", e);
-            }
-        }
-    });
-    
-    Ok("定时器已启动，每60秒执行一次进程限制".to_string())
-}
-
-#[tauri::command]
-fn stop_timer() -> String {
-    "定时器已停止".to_string()
-}
 
 #[tauri::command]
 fn get_process_performance() -> Vec<ProcessPerformance> {
@@ -1046,6 +1015,54 @@ fn modify_registry_priority() -> Result<String, String> {
 }
 
 #[tauri::command]
+fn modify_valorant_registry_priority() -> Result<String, String> {
+    if !is_elevated() {
+        return Err("需要管理员权限才能修改注册表".to_string());
+    }
+    
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let base_path = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options";
+    
+    let mut results = Vec::new();
+    let configs = vec![
+        ("VALORANT-Win64-Shipping.exe", 3u32, 3u32),
+        ("RiotClientServices.exe", 1u32, 1u32),       
+        ("vgc.exe", 1u32, 1u32),                     
+        ("vgk.sys", 1u32, 1u32),
+        ("vgtray.exe", 1u32, 1u32),                   
+    ];
+    
+    for (exe_name, cpu_priority, io_priority) in configs {
+        let key_path = format!(r"{}\{}\PerfOptions", base_path, exe_name);
+        
+        match hklm.create_subkey(&key_path) {
+            Ok((key, _)) => {
+                let mut success = true;
+                
+                if let Err(e) = key.set_value("CpuPriorityClass", &cpu_priority) {
+                    results.push(format!("{}:设置CPU优先级失败:{}", exe_name, e));
+                    success = false;
+                }
+                
+                if let Err(e) = key.set_value("IoPriority", &io_priority) {
+                    results.push(format!("{}:设置I/O优先级失败:{}", exe_name, e));
+                    success = false;
+                }
+                
+                if success {
+                    results.push(format!("{}:设置成功(CPU:{},I/O:{})", exe_name, cpu_priority, io_priority));
+                }
+            }
+            Err(e) => {
+                results.push(format!("{}:创建注册表项失败:{}", exe_name, e));
+            }
+        }
+    }
+    
+    Ok(results.join("\n"))
+}
+
+#[tauri::command]
 fn check_registry_priority() -> Result<String, String> {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let base_path = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options";
@@ -1056,6 +1073,10 @@ fn check_registry_priority() -> Result<String, String> {
         "DeltaForceClient-Win64-Shipping.exe",
         "SGuard64.exe",
         "SGuardSvc64.exe",
+        "VALORANT-Win64-Shipping.exe",
+        "RiotClientServices.exe",
+        "vgc.exe",
+        "vgtray.exe",
     ];
     
     for exe_name in exe_names {
@@ -1087,6 +1108,9 @@ fn check_registry_priority() -> Result<String, String> {
     Ok(results.join("\n"))
 }
 
+// Windows任务计划程序功能已移除
+// 请使用手动执行或注册表修改方式
+
 #[tauri::command]
 fn reset_registry_priority() -> Result<String, String> {
     if !is_elevated() {
@@ -1102,6 +1126,10 @@ fn reset_registry_priority() -> Result<String, String> {
         "DeltaForceClient-Win64-Shipping.exe",
         "SGuard64.exe",
         "SGuardSvc64.exe",
+        "VALORANT-Win64-Shipping.exe",
+        "RiotClientServices.exe",
+        "vgc.exe",
+        "vgtray.exe",
     ];
     
     for exe_name in exe_names {
@@ -1154,7 +1182,18 @@ pub fn run() {
                 _ => {}
             }
         })
-        .invoke_handler(tauri::generate_handler![restrict_processes, get_system_info, start_timer, stop_timer, get_process_performance, show_close_dialog, enable_autostart, disable_autostart, check_autostart, modify_registry_priority, check_registry_priority, reset_registry_priority])
+        .invoke_handler(tauri::generate_handler![
+            restrict_processes, 
+            get_system_info, 
+            get_process_performance, 
+            show_close_dialog, 
+            enable_autostart, 
+            disable_autostart, 
+            check_autostart, 
+            modify_registry_priority, 
+            modify_valorant_registry_priority,
+            check_registry_priority, 
+            reset_registry_priority])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

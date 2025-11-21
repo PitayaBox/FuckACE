@@ -23,6 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 info
+src/utils
+src/hooks
 src/supabaseClient.ts
-src/vite-env.d.ts
-src/hooks/

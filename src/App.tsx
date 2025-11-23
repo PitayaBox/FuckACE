@@ -37,7 +37,6 @@ import {
   SportsEsports as GameIcon,
   Extension as ModIcon,
   GitHub as GitHubIcon,
-  People as PeopleIcon,
   Notifications as NotificationsIcon,
   SystemUpdate as UpdateIcon,
   Close as CloseIcon,
@@ -122,6 +121,7 @@ interface SystemInfo {
   os_version: string;
   is_admin: boolean;
   total_memory_gb: number;
+  webview2_env: string;
 }
 
 interface ProcessPerformance {
@@ -151,7 +151,7 @@ function App() {
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
 
-  const { onlineCount, announcements, latestVersion, hasUpdate } = useInitialData('0.4.2');
+  const { announcements, latestVersion, hasUpdate } = useInitialData('0.4.2');
 
   const addLog = useCallback((message: string) => {
     const newLog: LogEntry = {
@@ -211,6 +211,7 @@ function App() {
       addLog(`CPU: ${info.cpu_model}`);
       addLog(`核心: ${info.cpu_cores}物理/${info.cpu_logical_cores}逻辑`);
       addLog(`内存: ${info.total_memory_gb.toFixed(2)} GB`);
+      addLog(`WebView2环境: ${info.webview2_env}`);
       
       if (!info.is_admin) {
         addLog('小春未以管理员权限运行，部分功能可能受限');
@@ -396,9 +397,6 @@ function App() {
               </Box>
             </Box>
             <Box display="flex" gap={0.5} alignItems="center" flexWrap="wrap">
-              <Badge badgeContent={onlineCount} color="success">
-                <Chip icon={<PeopleIcon />} label="在线" size="small" variant="outlined" />
-              </Badge>
               <Badge badgeContent={announcements.length > 0 ? announcements.length : 0} color="info">
                 <Button
                   variant="outlined"

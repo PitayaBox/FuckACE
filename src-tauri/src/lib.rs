@@ -27,6 +27,7 @@ struct SystemInfo {
     os_version: String,
     is_admin: bool,
     total_memory_gb: f64,
+    webview2_env: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -780,6 +781,32 @@ fn is_elevated() -> bool {
 }
 
 #[tauri::command]
+fn get_webview2_environment() -> String {
+    #[cfg(target_os = "windows")]
+    {
+        use std::env;
+        if let Ok(webview_path) = env::var("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER") {
+            if !webview_path.is_empty() {
+                return "便携环境".to_string();
+            }
+        }
+        if let Ok(exe_path) = env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                if exe_dir.join("webview2").exists() {
+                    return "便携环境".to_string();
+                }
+            }
+        }
+        "本地环境".to_string()
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        "非Windows平台".to_string()
+    }
+}
+
+#[tauri::command]
 fn get_system_info() -> SystemInfo {
     let mut system = System::new_all();
     system.refresh_all();
@@ -808,6 +835,7 @@ fn get_system_info() -> SystemInfo {
         os_version,
         is_admin,
         total_memory_gb,
+        webview2_env: get_webview2_environment(),
     }
 }
 
@@ -911,7 +939,7 @@ async fn show_close_dialog(app_handle: AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn close_application(app_handle: AppHandle) -> Result<String, String> {
+fn close_application(_app_handle: AppHandle) -> Result<String, String> {
     //退出FuckACE/(ㄒoㄒ)/~~
     std::process::exit(0);
 }

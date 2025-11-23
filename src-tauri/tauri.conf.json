@@ -52,5 +52,33 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "FuckACE",
+        "width": 900,
+        "height": 700,
+        "resizable": true,
+        "fullscreen": false,
+        "closable": true,
+        "skipTaskbar": false
+      }
+    ],
+    "security": {
+      "csp": null,
+      "capabilities": [
+        {
+          "identifier": "main-capability",
+          "windows": ["main"],
+          "permissions": [
+            "core:default",
+            "shell:default",
+            "process:allow-exit"
+          ]
+        }
+      ]
+    }
   }
 }

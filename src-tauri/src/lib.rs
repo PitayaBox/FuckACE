@@ -1061,10 +1061,6 @@ fn modify_valorant_registry_priority() -> Result<String, String> {
     let mut results = Vec::new();
     let configs = vec![
         ("VALORANT-Win64-Shipping.exe", 3u32, 3u32),
-        ("RiotClientServices.exe", 1u32, 1u32),       
-        ("vgc.exe", 1u32, 1u32),                     
-        ("vgk.sys", 1u32, 1u32),
-        ("vgtray.exe", 1u32, 1u32),                   
     ];
     
     for (exe_name, cpu_priority, io_priority) in configs {

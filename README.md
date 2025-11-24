@@ -3,7 +3,7 @@
 ### 喜欢的话请点点star，谢谢！Ciallo～(∠・ω<)⌒☆
 
 最新版本下载：
-- [直接下载](https://www.mikugame.icu/modpacks/80801631-36b1-4f9e-8604-127c6236848a)
+- [直接下载](https://www.mikugame.icu/modpacks)
   
 相关使用教程请看B站视频：
 - [FuckACE使用教程](https://www.bilibili.com/video/BV1ePCnBpEWp/)

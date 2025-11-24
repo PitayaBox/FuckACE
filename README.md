@@ -8,6 +8,9 @@
 相关使用教程请看B站视频：
 - [FuckACE使用教程](https://www.bilibili.com/video/BV1ePCnBpEWp/)
 
+反馈问题，或者你有什么建议都可以说！
+- [提出建议！](https://github.com/shshouse/FuckACE/issues/new)
+
 <img width="1336" height="1071" alt="image" src="https://github.com/user-attachments/assets/bf1de5f9-771f-41da-a503-0c81f36ceddc" />
 
 注意：<br>

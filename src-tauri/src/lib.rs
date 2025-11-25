@@ -871,6 +871,105 @@ fn get_process_performance() -> Vec<ProcessPerformance> {
     performances
 }
 
+#[tauri::command]
+fn check_game_processes() -> Vec<String> {
+    let mut system = System::new_all();
+    system.refresh_processes();
+    
+    let game_processes = vec![
+        "DeltaForceClient-Win64-Shipping.exe",
+        "VALORANT-Win64-Shipping.exe"
+    ];
+    
+    let mut running_games = Vec::new();
+    
+    for (_, process) in system.processes() {
+        let process_name = process.name().to_lowercase();
+        for game in &game_processes {
+            if process_name.contains(&game.to_lowercase()) {
+                running_games.push(game.to_string());
+                break;
+            }
+        }
+    }
+    
+    running_games
+}
+
+#[tauri::command]
+fn set_game_process_priority() -> Result<String, String> {
+    enable_debug_privilege();
+    
+    let mut system = System::new_all();
+    system.refresh_processes();
+    
+    let game_configs = vec![
+        ("DeltaForceClient-Win64-Shipping.exe", 3u32, 3u32),
+        ("VALORANT-Win64-Shipping.exe", 3u32, 3u32)
+    ];
+    
+    let mut results = Vec::new();
+    
+    for (game_name, cpu_priority, io_priority) in game_configs {
+        let mut found = false;
+        for (pid, process) in system.processes() {
+            if process.name().to_lowercase().contains(&game_name.to_lowercase()) {
+                found = true;
+                
+                unsafe {
+                    use windows::Win32::System::Threading::{OpenProcess, SetPriorityClass, PROCESS_SET_INFORMATION, PROCESS_QUERY_INFORMATION};
+                    use windows::Win32::Foundation::CloseHandle;
+                    
+                    let process_handle = OpenProcess(
+                        PROCESS_SET_INFORMATION | PROCESS_QUERY_INFORMATION,
+                        false,
+                        pid.as_u32()
+                    );
+                    
+                    if let Ok(handle) = process_handle {
+                        if !handle.is_invalid() {
+                            let priority_class = match cpu_priority {
+                                3 => windows::Win32::System::Threading::HIGH_PRIORITY_CLASS,
+                                2 => windows::Win32::System::Threading::ABOVE_NORMAL_PRIORITY_CLASS,
+                                1 => windows::Win32::System::Threading::NORMAL_PRIORITY_CLASS,
+                                _ => windows::Win32::System::Threading::HIGH_PRIORITY_CLASS
+                            };
+                            
+                            let _ = SetPriorityClass(handle, priority_class);
+                            let io_priority_value: u32 = match io_priority {
+                                3 => 3,
+                                2 => 2,
+                                1 => 1,
+                                _ => 3
+                            };
+                            
+                            let _ = windows::Win32::System::Threading::SetProcessInformation(
+                                handle,
+                                windows::Win32::System::Threading::PROCESS_INFORMATION_CLASS(33), // ProcessIoPriority
+                                &io_priority_value as *const _ as *const _,
+                                std::mem::size_of::<u32>() as u32
+                            );
+                            
+                            let _ = CloseHandle(handle);
+                        }
+                    }
+                }
+                
+                results.push(format!("{}: 已设置优先级 (CPU: {}, I/O: {})
+", game_name, cpu_priority, io_priority));
+                break;
+            }
+        }
+        
+        if !found {
+            results.push(format!("{}: 未找到进程
+", game_name));
+        }
+    }
+    
+    Ok(results.join(""))
+}
+
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "显示窗口", true, None::<&str>)?;
     let hide = MenuItem::with_id(app, "hide", "隐藏到托盘", true, None::<&str>)?;
@@ -1223,7 +1322,9 @@ pub fn run() {
             modify_registry_priority, 
             modify_valorant_registry_priority,
             check_registry_priority, 
-            reset_registry_priority])
+            reset_registry_priority,
+            check_game_processes,
+            set_game_process_priority])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

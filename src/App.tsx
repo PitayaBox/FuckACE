@@ -149,9 +149,12 @@ function App() {
   const [showAnnouncements, setShowAnnouncements] = useState(false);
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [isAutoMonitoring, setIsAutoMonitoring] = useState(false);
+  const [gameProcesses, setGameProcesses] = useState<string[]>([]);
+  const monitorIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
 
-  const { announcements, latestVersion, hasUpdate } = useInitialData('0.4.2');
+  const { announcements, latestVersion, hasUpdate } = useInitialData('0.5.0');
 
   const addLog = useCallback((message: string) => {
     const newLog: LogEntry = {
@@ -167,7 +170,7 @@ function App() {
       addLog('进程限制开始b（￣▽￣）d　');
       setLoading(true);
 
-      const result = await invoke<ProcessStatus>('restrict_processes', { 
+      const result = await invoke<ProcessStatus>('restrict_processes', {
         enableBasicCpuLimit,
         enableEfficiencyMode,
         enableIoPriority,
@@ -175,7 +178,7 @@ function App() {
       });
       setProcessStatus(result);
       setTargetCore(result.target_core);
-      
+
       addLog(result.message);
     } catch (error) {
       addLog(`执行失败: ${error}`);
@@ -212,7 +215,7 @@ function App() {
       addLog(`核心: ${info.cpu_cores}物理/${info.cpu_logical_cores}逻辑`);
       addLog(`内存: ${info.total_memory_gb.toFixed(2)} GB`);
       addLog(`WebView2环境: ${info.webview2_env}`);
-      
+
       if (!info.is_admin) {
         addLog('小春未以管理员权限运行，部分功能可能受限');
       } else {
@@ -257,6 +260,59 @@ function App() {
       console.error('切换自启动失败:', error);
     }
   }, [autoStartEnabled, addLog]);
+
+  const checkGameProcesses = useCallback(async () => {
+    try {
+      const processes = await invoke<string[]>('check_game_processes');
+      setGameProcesses(processes);
+      return processes;
+    } catch (error) {
+      console.error('检查游戏进程失败:', error);
+      return [];
+    }
+  }, []);
+
+  const setGameProcessPriority = useCallback(async () => {
+    try {
+      await invoke('set_game_process_priority');
+      addLog('已提高游戏进程优先级');
+    } catch (error) {
+      addLog(`提高游戏进程优先级失败: ${error}`);
+      console.error('提高游戏进程优先级失败:', error);
+    }
+  }, [addLog]);
+
+  const toggleAutoMonitoring = useCallback(async () => {
+    if (isAutoMonitoring) {
+      if (monitorIntervalRef.current) {
+        clearInterval(monitorIntervalRef.current);
+        monitorIntervalRef.current = null;
+      }
+      setIsAutoMonitoring(false);
+      addLog('已停止自动监控');
+    } else {
+      setIsAutoMonitoring(true);
+      addLog('已启动自动监控');
+      
+      // 立即检查一次游戏进程
+      const processes = await checkGameProcesses();
+      if (processes.length > 0) {
+        addLog(`检测到游戏进程: ${processes.join(', ')}`);
+        await executeProcessRestriction();
+        await setGameProcessPriority();
+      }
+      
+      // 设置定期检查
+      monitorIntervalRef.current = setInterval(async () => {
+        const processes = await checkGameProcesses();
+        if (processes.length > 0) {
+          addLog(`检测到游戏进程: ${processes.join(', ')}`);
+          await executeProcessRestriction();
+          await setGameProcessPriority();
+        }
+      }, 5000);
+    }
+  }, [isAutoMonitoring, checkGameProcesses, executeProcessRestriction, setGameProcessPriority, addLog]);
 
   const modifyRegistryPriority = useCallback(async () => {
     try {
@@ -382,14 +438,14 @@ function App() {
         <Paper elevation={3} sx={{ p: 1.5, mb: 1 }}>
           <Box display="flex" justifyContent="space-between" alignItems="center">
             <Box display="flex" alignItems="center" gap={2}>
-                <Avatar 
-                  src="/logo.png" 
-                  sx={{ width: 36, height: 36 }}
-                  variant="rounded"
-                />
+              <Avatar
+                src="/logo.png"
+                sx={{ width: 36, height: 36 }}
+                variant="rounded"
+              />
               <Box>
                 <Typography variant="h5" component="h1" color="primary" sx={{ lineHeight: 1.2 }}>
-                  FuckACE v0.4.2
+                  FuckACE v0.5.0
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   小春正在持续监控并限制ACE占用
@@ -468,64 +524,83 @@ function App() {
             <Paper elevation={2} sx={{ p: 1.5, flex: 1, minWidth: 0, maxWidth: '100%' }}>
               <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>监控状态</Typography>
               <Box display="flex" flexDirection="column" gap={0.8} sx={{ maxHeight: 150, overflow: 'hidden' }}>
-                <Box display="flex" justifyContent="space-between" alignItems="center">
-                  <Typography variant="body2">监控状态:</Typography>
-                  <Chip
-                    icon={isMonitoring ? <CheckCircle /> : <Schedule />}
-                    label={isMonitoring ? '监控中' : '已停止'}
-                    color={isMonitoring ? 'success' : 'default'}
-                    size="small"
-                  />
-                </Box>
-                
-                <Box display="flex" justifyContent="space-between" alignItems="center">
-                  <Typography variant="body2">目标核心:</Typography>
-                  <Chip
-                    label={targetCore !== null ? `核心 ${targetCore}` : '检测中...'}
-                    color="info"
-                    variant="outlined"
-                    size="small"
-                  />
-                </Box>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Typography variant="body2">监控状态:</Typography>
+            <Chip
+              icon={isMonitoring ? <CheckCircle /> : <Schedule />}
+              label={isMonitoring ? '监控中' : '已停止'}
+              color={isMonitoring ? 'success' : 'default'}
+              size="small"
+            />
+          </Box>
 
-                {loading && <LinearProgress sx={{ mt: 1 }} />}
-              </Box>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Typography variant="body2">自动监控:</Typography>
+            <Chip
+              icon={isAutoMonitoring ? <CheckCircle /> : <Schedule />}
+              label={isAutoMonitoring ? '已开启' : '已关闭'}
+              color={isAutoMonitoring ? 'success' : 'default'}
+              size="small"
+            />
+          </Box>
+
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Typography variant="body2">目标核心:</Typography>
+            <Chip
+              label={targetCore !== null ? `核心 ${targetCore}` : '检测中...'}
+              color="info"
+              variant="outlined"
+              size="small"
+            />
+          </Box>
+
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Typography variant="body2">游戏进程:</Typography>
+            <Chip
+              label={gameProcesses.length > 0 ? gameProcesses.join(', ') : '未检测到'}
+              color={gameProcesses.length > 0 ? 'success' : 'default'}
+              size="small"
+            />
+          </Box>
+
+          {loading && <LinearProgress sx={{ mt: 1 }} />}
+        </Box>
             </Paper>
 
             <Paper elevation={2} sx={{ p: 1.5, flex: 1, minWidth: 0, maxWidth: '100%' }}>
               <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>进程状态</Typography>
               <List dense sx={{ maxHeight: 150, overflowY: 'auto' }}>
                 <ListItem secondaryAction={
-                    <Chip
-                      label={getProcessStatusText(processStatus?.sguard64_found || false, processStatus?.sguard64_restricted || false)}
-                      color={getProcessStatusColor(processStatus?.sguard64_found || false, processStatus?.sguard64_restricted || false)}
-                      size="small"
-                    />
-                  }
+                  <Chip
+                    label={getProcessStatusText(processStatus?.sguard64_found || false, processStatus?.sguard64_restricted || false)}
+                    color={getProcessStatusColor(processStatus?.sguard64_found || false, processStatus?.sguard64_restricted || false)}
+                    size="small"
+                  />
+                }
                   sx={{ py: 0.3 }}
                 >
                   <ListItemText primary="SGuard64.exe" primaryTypographyProps={{ variant: 'body2', fontSize: '0.85rem' }} />
                 </ListItem>
                 <Divider />
                 <ListItem secondaryAction={
-                    <Chip
-                      label={getProcessStatusText(processStatus?.sguardsvc64_found || false, processStatus?.sguardsvc64_restricted || false)}
-                      color={getProcessStatusColor(processStatus?.sguardsvc64_found || false, processStatus?.sguardsvc64_restricted || false)}
-                      size="small"
-                    />
-                  }
+                  <Chip
+                    label={getProcessStatusText(processStatus?.sguardsvc64_found || false, processStatus?.sguardsvc64_restricted || false)}
+                    color={getProcessStatusColor(processStatus?.sguardsvc64_found || false, processStatus?.sguardsvc64_restricted || false)}
+                    size="small"
+                  />
+                }
                   sx={{ py: 0.3 }}
                 >
                   <ListItemText primary="SGuardSvc64.exe" primaryTypographyProps={{ variant: 'body2', fontSize: '0.85rem' }} />
                 </ListItem>
                 <Divider />
                 <ListItem secondaryAction={
-                    <Chip
-                      label={getProcessStatusText(processStatus?.weixin_found || false, processStatus?.weixin_restricted || false)}
-                      color={getProcessStatusColor(processStatus?.weixin_found || false, processStatus?.weixin_restricted || false)}
-                      size="small"
-                    />
-                  }
+                  <Chip
+                    label={getProcessStatusText(processStatus?.weixin_found || false, processStatus?.weixin_restricted || false)}
+                    color={getProcessStatusColor(processStatus?.weixin_found || false, processStatus?.weixin_restricted || false)}
+                    size="small"
+                  />
+                }
                   sx={{ py: 0.3 }}
                 >
                   <ListItemText primary="Weixin.exe" primaryTypographyProps={{ variant: 'body2', fontSize: '0.85rem' }} />
@@ -583,7 +658,7 @@ function App() {
                               <Typography variant="body2" fontWeight="500">
                                 {proc.name} (PID: {proc.pid})
                               </Typography>
-                              <Chip 
+                              <Chip
                                 label={`CPU: ${proc.cpu_usage.toFixed(1)}%`}
                                 size="small"
                                 color={proc.cpu_usage > 10 ? 'error' : proc.cpu_usage > 5 ? 'warning' : 'success'}
@@ -595,9 +670,9 @@ function App() {
                               <Typography variant="caption" display="block">
                                 内存: {proc.memory_mb.toFixed(2)} MB
                               </Typography>
-                              <LinearProgress 
-                                variant="determinate" 
-                                value={Math.min(proc.cpu_usage, 100)} 
+                              <LinearProgress
+                                variant="determinate"
+                                value={Math.min(proc.cpu_usage, 100)}
                                 sx={{ mt: 0.5, height: 6, borderRadius: 1 }}
                                 color={proc.cpu_usage > 10 ? 'error' : proc.cpu_usage > 5 ? 'warning' : 'success'}
                               />
@@ -617,7 +692,7 @@ function App() {
             </Paper>
 
             <Paper elevation={2} sx={{ p: 1.5, flex: 1, minWidth: 0, maxWidth: '100%', display: 'flex', flexDirection: 'column' }}
-              >
+            >
               <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>控制面板</Typography>
               <Box display="grid" gridTemplateColumns="1fr 1fr 1fr" gap={0.8} sx={{ mb: 1 }}>
                 <FormControlLabel
@@ -694,6 +769,20 @@ function App() {
                   }
                   sx={{ m: 0 }}
                 />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={isAutoMonitoring}
+                      onChange={toggleAutoMonitoring}
+                      color="primary"
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Typography variant="caption">自动监控</Typography>
+                  }
+                  sx={{ m: 0 }}
+                />
               </Box>
               <Box display="flex" flexDirection="column" gap={0.6} sx={{ flex: 1, justifyContent: 'flex-end' }}>
                 <Button
@@ -705,7 +794,7 @@ function App() {
                   size="small"
                   fullWidth
                 >
-                  立即执行
+                  手动执行
                 </Button>
                 <Button
                   variant="contained"
@@ -785,167 +874,165 @@ function App() {
           </Paper>
         </Box>
 
-            {/* 公告对话框 */}
-            <Dialog
-              open={showAnnouncements}
-              onClose={() => setShowAnnouncements(false)}
-              maxWidth="sm"
-              fullWidth
-            >
-              <DialogTitle>
-                <Box display="flex" justifyContent="space-between" alignItems="center">
-                  <Typography variant="h6">公告</Typography>
-                  <Button onClick={() => setShowAnnouncements(false)} size="small">
-                    <CloseIcon />
-                  </Button>
-                </Box>
-              </DialogTitle>
-              <DialogContent dividers>
-                {announcements.map((announcement) => (
-                  <Alert
-                    key={announcement.id}
-                    severity={
-                      announcement.priority === 'urgent' ? 'error' :
-                      announcement.priority === 'high' ? 'warning' :
+        {/* 公告对话框 */}
+        <Dialog
+          open={showAnnouncements}
+          onClose={() => setShowAnnouncements(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Typography variant="h6">公告</Typography>
+              <Button onClick={() => setShowAnnouncements(false)} size="small">
+                <CloseIcon />
+              </Button>
+            </Box>
+          </DialogTitle>
+          <DialogContent dividers>
+            {announcements.map((announcement) => (
+              <Alert
+                key={announcement.id}
+                severity={
+                  announcement.priority === 'urgent' ? 'error' :
+                    announcement.priority === 'high' ? 'warning' :
                       announcement.priority === 'low' ? 'info' : 'success'
-                    }
-                    sx={{ mb: 2 }}
-                  >
-                    <Typography variant="subtitle2" fontWeight="bold">
-                      {announcement.title}
-                    </Typography>
-                    <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-line' }}>
-                      {announcement.content}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                      发布时间: {new Date(announcement.created_at).toLocaleDateString('zh-CN')}
-                    </Typography>
-                  </Alert>
-                ))}
-              </DialogContent>
-              <DialogActions>
-                <Button onClick={() => setShowAnnouncements(false)}>关闭</Button>
-              </DialogActions>
-            </Dialog>
-
-            {/* 更新提示对话框 */}
-            <Dialog
-              open={showUpdateDialog}
-              onClose={() => setShowUpdateDialog(false)}
-              maxWidth="sm"
-              fullWidth
-            >
-              <DialogTitle>
-                <Box display="flex" justifyContent="space-between" alignItems="center">
-                  <Typography variant="h6">{hasUpdate ? '发现新版本' : '版本检查'}</Typography>
-                  <Button onClick={() => setShowUpdateDialog(false)} size="small">
-                    <CloseIcon />
-                  </Button>
-                </Box>
-              </DialogTitle>
-              <DialogContent dividers>
-                {hasUpdate && latestVersion ? (
-                  <Box>
-                    <Alert severity={latestVersion.is_critical ? 'error' : 'info'} sx={{ mb: 2 }}>
-                      <Typography variant="subtitle1" fontWeight="bold">
-                        版本 {latestVersion.version}
-                        {latestVersion.is_critical && ' (重要更新)'}
-                      </Typography>
-                    </Alert>
-                    
-                    <Typography variant="subtitle2" gutterBottom fontWeight="bold">
-                      更新内容:
-                    </Typography>
-                    <Typography variant="body2" sx={{ whiteSpace: 'pre-line', mb: 2 }}>
-                      {latestVersion.changelog}
-                    </Typography>
-                    
-                    <Typography variant="caption" color="text.secondary">
-                      发布时间: {new Date(latestVersion.created_at).toLocaleDateString('zh-CN')}
-                    </Typography>
-                  </Box>
-                ) : (
-                  <Box>
-                    <Alert severity="success" sx={{ mb: 2 }}>
-                      <Typography variant="subtitle1" fontWeight="bold">
-                        已是最新版本
-                      </Typography>
-                    </Alert>
-                    <Typography variant="body2" color="text.secondary">
-                      当前版本: v0.4.2
-                    </Typography>
-                  </Box>
-                )}
-              </DialogContent>
-              <DialogActions>
-                <Button onClick={() => setShowUpdateDialog(false)}>{hasUpdate ? '稍后更新' : '关闭'}</Button>
-                {hasUpdate && latestVersion && (
-                  <Button
-                    variant="contained"
-                    onClick={async () => {
-                      await openExternalLink(latestVersion.download_url);
-                    }}
-                    color="primary"
-                  >
-                    立即下载
-                  </Button>
-                )}
-              </DialogActions>
-            </Dialog>
-
-            {/* 关闭确认对话框 */}
-            <Dialog
-              open={showCloseConfirm}
-              onClose={() => setShowCloseConfirm(false)}
-              maxWidth="xs"
-              fullWidth
-            >
-              <DialogTitle>
-                <Box display="flex" alignItems="center" gap={1}>
-                  <WarningIcon color="warning" />
-                  <Typography variant="h6">确认关闭</Typography>
-                </Box>
-              </DialogTitle>
-              <DialogContent>
-                <Typography variant="body1" sx={{ mt: 1 }}>
-                  您确定要关闭应用程序吗？
+                }
+                sx={{ mb: 2 }}
+              >
+                <Typography variant="subtitle2" fontWeight="bold">
+                  {announcement.title}
                 </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  选择"最小化到托盘"将保持程序在后台运行，选择"彻底退出"将关闭程序。
+                <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-line' }}>
+                  {announcement.content}
                 </Typography>
-              </DialogContent>
-              <DialogActions>
-                <Button 
-                  onClick={() => setShowCloseConfirm(false)}
-                  color="inherit"
-                >
-                  取消
-                </Button>
-                <Button 
-                  onClick={async () => {
-                    await invoke('show_close_dialog');
-                    setShowCloseConfirm(false);
-                  }}
-                  variant="outlined"
-                  color="primary"
-                >
-                  最小化到托盘
-                </Button>
-                <Button 
-                  onClick={async () => {
-                    // 彻底退出程序
-                    await invoke('close_application');
-                  }}
-                  variant="contained"
-                  color="error"
-                >
-                  彻底退出
-                </Button>
-              </DialogActions>
-            </Dialog>
-          </Container>
-        </ThemeProvider>
-      );
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                  发布时间: {new Date(announcement.created_at).toLocaleDateString('zh-CN')}
+                </Typography>
+              </Alert>
+            ))}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowAnnouncements(false)}>关闭</Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog
+          open={showUpdateDialog}
+          onClose={() => setShowUpdateDialog(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Typography variant="h6">{hasUpdate ? '发现新版本' : '版本检查'}</Typography>
+              <Button onClick={() => setShowUpdateDialog(false)} size="small">
+                <CloseIcon />
+              </Button>
+            </Box>
+          </DialogTitle>
+          <DialogContent dividers>
+            {hasUpdate && latestVersion ? (
+              <Box>
+                <Alert severity={latestVersion.is_critical ? 'error' : 'info'} sx={{ mb: 2 }}>
+                  <Typography variant="subtitle1" fontWeight="bold">
+                    版本 {latestVersion.version}
+                    {latestVersion.is_critical && ' (重要更新)'}
+                  </Typography>
+                </Alert>
+
+                <Typography variant="subtitle2" gutterBottom fontWeight="bold">
+                  更新内容:
+                </Typography>
+                <Typography variant="body2" sx={{ whiteSpace: 'pre-line', mb: 2 }}>
+                  {latestVersion.changelog}
+                </Typography>
+
+                <Typography variant="caption" color="text.secondary">
+                  发布时间: {new Date(latestVersion.created_at).toLocaleDateString('zh-CN')}
+                </Typography>
+              </Box>
+            ) : (
+              <Box>
+                <Alert severity="success" sx={{ mb: 2 }}>
+                  <Typography variant="subtitle1" fontWeight="bold">
+                    已是最新版本
+                  </Typography>
+                </Alert>
+                <Typography variant="body2" color="text.secondary">
+                  当前版本: v0.5.0
+                </Typography>
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowUpdateDialog(false)}>{hasUpdate ? '稍后更新' : '关闭'}</Button>
+            {hasUpdate && latestVersion && (
+              <Button
+                variant="contained"
+                onClick={async () => {
+                  await openExternalLink(latestVersion.download_url);
+                }}
+                color="primary"
+              >
+                立即下载
+              </Button>
+            )}
+          </DialogActions>
+        </Dialog>
+
+        <Dialog
+          open={showCloseConfirm}
+          onClose={() => setShowCloseConfirm(false)}
+          maxWidth="xs"
+          fullWidth
+        >
+          <DialogTitle>
+            <Box display="flex" alignItems="center" gap={1}>
+              <WarningIcon color="warning" />
+              <Typography variant="h6">确认关闭</Typography>
+            </Box>
+          </DialogTitle>
+          <DialogContent>
+            <Typography variant="body1" sx={{ mt: 1 }}>
+              您确定要关闭应用程序吗？
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              选择"最小化到托盘"将保持程序在后台运行，选择"彻底退出"将关闭程序。
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button
+              onClick={() => setShowCloseConfirm(false)}
+              color="inherit"
+            >
+              取消
+            </Button>
+            <Button
+              onClick={async () => {
+                await invoke('show_close_dialog');
+                setShowCloseConfirm(false);
+              }}
+              variant="outlined"
+              color="primary"
+            >
+              最小化到托盘
+            </Button>
+            <Button
+              onClick={async () => {
+                // 彻底退出程序
+                await invoke('close_application');
+              }}
+              variant="contained"
+              color="error"
+            >
+              彻底退出
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </Container>
+    </ThemeProvider>
+  );
 }
 
 export default App;

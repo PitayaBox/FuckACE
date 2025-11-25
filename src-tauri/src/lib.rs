@@ -5,6 +5,10 @@ use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use winreg::enums::*;
 use winreg::RegKey;
+use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct RestrictResult {
@@ -1204,9 +1208,6 @@ fn check_registry_priority() -> Result<String, String> {
         "SGuard64.exe",
         "SGuardSvc64.exe",
         "VALORANT-Win64-Shipping.exe",
-        "RiotClientServices.exe",
-        "vgc.exe",
-        "vgtray.exe",
     ];
     
     for exe_name in exe_names {
@@ -1238,8 +1239,6 @@ fn check_registry_priority() -> Result<String, String> {
     Ok(results.join("\n"))
 }
 
-// Windows任务计划程序功能已移除
-// 请使用手动执行或注册表修改方式
 
 #[tauri::command]
 fn reset_registry_priority() -> Result<String, String> {
@@ -1257,9 +1256,6 @@ fn reset_registry_priority() -> Result<String, String> {
         "SGuard64.exe",
         "SGuardSvc64.exe",
         "VALORANT-Win64-Shipping.exe",
-        "RiotClientServices.exe",
-        "vgc.exe",
-        "vgtray.exe",
     ];
     
     for exe_name in exe_names {
@@ -1327,4 +1323,146 @@ pub fn run() {
             set_game_process_priority])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct BatchExecutionStatus {
+    is_running: bool,
+    pid: Option<u32>,
+    output: String,
+    error: String,
+}
+
+struct BatchProcessState {
+    child: Option<std::process::Child>,
+    is_running: bool,
+}
+
+struct AppState {
+    batch_process: Arc<Mutex<BatchProcessState>>,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            batch_process: Arc::new(Mutex::new(BatchProcessState {
+                child: None,
+                is_running: false,
+            })),
+        }
+    }
+}
+
+#[tauri::command]
+fn execute_batch_script(state: State<AppState>, script_path: String) -> Result<BatchExecutionStatus, String> {
+    let mut batch_state = state.batch_process.lock().map_err(|e| format!("锁定状态失败: {}", e))?;
+    
+    if batch_state.is_running {
+        return Err("批处理脚本已在运行中".to_string());
+    }
+    
+    let child = Command::new("cmd")
+        .args(["/c", &script_path])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("启动批处理脚本失败: {}", e))?;
+    
+    let pid = child.id();
+    
+    batch_state.child = Some(child);
+    batch_state.is_running = true;
+    
+    Ok(BatchExecutionStatus {
+        is_running: true,
+        pid: Some(pid),
+        output: "批处理脚本已启动".to_string(),
+        error: String::new(),
+    })
+}
+
+#[tauri::command]
+fn stop_batch_script(state: State<AppState>) -> Result<BatchExecutionStatus, String> {
+    let mut batch_state = state.batch_process.lock().map_err(|e| format!("锁定状态失败: {}", e))?;
+    
+    if !batch_state.is_running {
+        return Ok(BatchExecutionStatus {
+            is_running: false,
+            pid: None,
+            output: "批处理脚本未在运行".to_string(),
+            error: String::new(),
+        });
+    }
+    
+    if let Some(mut child) = batch_state.child.take() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    
+    batch_state.is_running = false;
+    
+    Ok(BatchExecutionStatus {
+        is_running: false,
+        pid: None,
+        output: "批处理脚本已停止".to_string(),
+        error: String::new(),
+    })
+}
+
+#[tauri::command]
+fn check_batch_status(state: State<AppState>) -> Result<BatchExecutionStatus, String> {
+    let mut batch_state = state.batch_process.lock().map_err(|e| format!("锁定状态失败: {}", e))?;
+    
+    if !batch_state.is_running {
+        return Ok(BatchExecutionStatus {
+            is_running: false,
+            pid: None,
+            output: "批处理脚本未在运行".to_string(),
+            error: String::new(),
+        });
+    }
+    
+    if let Some(child) = &mut batch_state.child {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                batch_state.is_running = false;
+                batch_state.child = None;
+                
+                Ok(BatchExecutionStatus {
+                    is_running: false,
+                    pid: None,
+                    output: format!("批处理脚本已结束，退出码: {}", status.code().unwrap_or(-1)),
+                    error: String::new(),
+                })
+            }
+            Ok(None) => {
+                Ok(BatchExecutionStatus {
+                    is_running: true,
+                    pid: Some(child.id()),
+                    output: "批处理脚本正在运行".to_string(),
+                    error: String::new(),
+                })
+            }
+            Err(e) => {
+                batch_state.is_running = false;
+                batch_state.child = None;
+                
+                Ok(BatchExecutionStatus {
+                    is_running: false,
+                    pid: None,
+                    output: String::new(),
+                    error: format!("检查批处理状态失败: {}", e),
+                })
+            }
+        }
+    } else {
+        batch_state.is_running = false;
+        
+        Ok(BatchExecutionStatus {
+            is_running: false,
+            pid: None,
+            output: "批处理脚本状态异常".to_string(),
+            error: String::new(),
+        })
+    }
 }

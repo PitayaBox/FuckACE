@@ -210,6 +210,8 @@ function App() {
     try {
       const info = await invoke<SystemInfo>('get_system_info');
       setSystemInfo(info);
+      const lastCore = info.cpu_logical_cores - 1;
+      setTargetCore(lastCore);
       addLog(`系统信息已加载: ${info.os_name} ${info.os_version}`);
       addLog(`CPU: ${info.cpu_model}`);
       addLog(`核心: ${info.cpu_cores}物理/${info.cpu_logical_cores}逻辑`);
@@ -524,16 +526,6 @@ function App() {
             <Paper elevation={2} sx={{ p: 1.5, flex: 1, minWidth: 0, maxWidth: '100%' }}>
               <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>监控状态</Typography>
               <Box display="flex" flexDirection="column" gap={0.8} sx={{ maxHeight: 150, overflow: 'hidden' }}>
-          <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Typography variant="body2">监控状态:</Typography>
-            <Chip
-              icon={isMonitoring ? <CheckCircle /> : <Schedule />}
-              label={isMonitoring ? '监控中' : '已停止'}
-              color={isMonitoring ? 'success' : 'default'}
-              size="small"
-            />
-          </Box>
-
           <Box display="flex" justifyContent="space-between" alignItems="center">
             <Typography variant="body2">自动监控:</Typography>
             <Chip

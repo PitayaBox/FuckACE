@@ -31,7 +31,6 @@ import {
 import {
   PlayArrow as StartIcon,
   CheckCircle,
-  Schedule,
   DarkMode as DarkModeIcon,
   LightMode as LightModeIcon,
   SportsEsports as GameIcon,
@@ -149,9 +148,7 @@ function App() {
   const [showAnnouncements, setShowAnnouncements] = useState(false);
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
-  const [isAutoMonitoring, setIsAutoMonitoring] = useState(false);
-  const [gameProcesses, setGameProcesses] = useState<string[]>([]);
-  const monitorIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [gameProcesses] = useState<string[]>([]);
 
 
   const { announcements, latestVersion, hasUpdate } = useInitialData('0.5.0');
@@ -246,7 +243,7 @@ function App() {
     }
   }, []);
 
-  const toggleAutoStart = useCallback(async () => {
+  const toggleAutoStartup = useCallback(async () => {
     try {
       if (autoStartEnabled) {
         await invoke<string>('disable_autostart');
@@ -263,58 +260,7 @@ function App() {
     }
   }, [autoStartEnabled, addLog]);
 
-  const checkGameProcesses = useCallback(async () => {
-    try {
-      const processes = await invoke<string[]>('check_game_processes');
-      setGameProcesses(processes);
-      return processes;
-    } catch (error) {
-      console.error('检查游戏进程失败:', error);
-      return [];
-    }
-  }, []);
 
-  const setGameProcessPriority = useCallback(async () => {
-    try {
-      await invoke('set_game_process_priority');
-      addLog('已提高游戏进程优先级');
-    } catch (error) {
-      addLog(`提高游戏进程优先级失败: ${error}`);
-      console.error('提高游戏进程优先级失败:', error);
-    }
-  }, [addLog]);
-
-  const toggleAutoMonitoring = useCallback(async () => {
-    if (isAutoMonitoring) {
-      if (monitorIntervalRef.current) {
-        clearInterval(monitorIntervalRef.current);
-        monitorIntervalRef.current = null;
-      }
-      setIsAutoMonitoring(false);
-      addLog('已停止自动监控');
-    } else {
-      setIsAutoMonitoring(true);
-      addLog('已启动自动监控');
-      
-      // 立即检查一次游戏进程
-      const processes = await checkGameProcesses();
-      if (processes.length > 0) {
-        addLog(`检测到游戏进程: ${processes.join(', ')}`);
-        await executeProcessRestriction();
-        await setGameProcessPriority();
-      }
-      
-      // 设置定期检查
-      monitorIntervalRef.current = setInterval(async () => {
-        const processes = await checkGameProcesses();
-        if (processes.length > 0) {
-          addLog(`检测到游戏进程: ${processes.join(', ')}`);
-          await executeProcessRestriction();
-          await setGameProcessPriority();
-        }
-      }, 5000);
-    }
-  }, [isAutoMonitoring, checkGameProcesses, executeProcessRestriction, setGameProcessPriority, addLog]);
 
   const modifyRegistryPriority = useCallback(async () => {
     try {
@@ -523,18 +469,11 @@ function App() {
 
         <Box display="flex" flexDirection="column" gap={1} sx={{ flex: 1, overflow: 'hidden' }}>
           <Box display="flex" gap={1}>
-            <Paper elevation={2} sx={{ p: 1.5, flex: 1, minWidth: 0, maxWidth: '100%' }}>
+            <Paper elevation={2} sx={{ p: 1.5, flex: 1, minWidth: 0, maxWidth: '100%', display: 'flex', flexDirection: 'column' }}
+            >
               <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>监控状态</Typography>
               <Box display="flex" flexDirection="column" gap={0.8} sx={{ maxHeight: 150, overflow: 'hidden' }}>
-          <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Typography variant="body2">自动监控:</Typography>
-            <Chip
-              icon={isAutoMonitoring ? <CheckCircle /> : <Schedule />}
-              label={isAutoMonitoring ? '已开启' : '已关闭'}
-              color={isAutoMonitoring ? 'success' : 'default'}
-              size="small"
-            />
-          </Box>
+
 
           <Box display="flex" justifyContent="space-between" alignItems="center">
             <Typography variant="body2">目标核心:</Typography>
@@ -685,109 +624,8 @@ function App() {
 
             <Paper elevation={2} sx={{ p: 1.5, flex: 1, minWidth: 0, maxWidth: '100%', display: 'flex', flexDirection: 'column' }}
             >
-              <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>控制面板</Typography>
-              <Box display="grid" gridTemplateColumns="1fr 1fr 1fr" gap={0.8} sx={{ mb: 1 }}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={enableBasicCpuLimit}
-                      onChange={(e) => setEnableBasicCpuLimit(e.target.checked)}
-                      disabled={isMonitoring}
-                      color="success"
-                      size="small"
-                    />
-                  }
-                  label={
-                    <Typography variant="caption">基础CPU限制</Typography>
-                  }
-                  sx={{ m: 0 }}
-                />
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={enableEfficiencyMode}
-                      onChange={(e) => setEnableEfficiencyMode(e.target.checked)}
-                      disabled={isMonitoring}
-                      color="warning"
-                      size="small"
-                    />
-                  }
-                  label={
-                    <Typography variant="caption">效率模式</Typography>
-                  }
-                  sx={{ m: 0 }}
-                />
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={enableIoPriority}
-                      onChange={(e) => setEnableIoPriority(e.target.checked)}
-                      disabled={isMonitoring}
-                      color="error"
-                      size="small"
-                    />
-                  }
-                  label={
-                    <Typography variant="caption">I/O优先级(建议仅执行一次)</Typography>
-                  }
-                  sx={{ m: 0 }}
-                />
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={enableMemoryPriority}
-                      onChange={(e) => setEnableMemoryPriority(e.target.checked)}
-                      disabled={isMonitoring}
-                      color="error"
-                      size="small"
-                    />
-                  }
-                  label={
-                    <Typography variant="caption">内存优先级(建议仅执行一次)</Typography>
-                  }
-                  sx={{ m: 0 }}
-                />
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={autoStartEnabled}
-                      onChange={toggleAutoStart}
-                      color="primary"
-                      size="small"
-                    />
-                  }
-                  label={
-                    <Typography variant="caption">开机自启动</Typography>
-                  }
-                  sx={{ m: 0 }}
-                />
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={isAutoMonitoring}
-                      onChange={toggleAutoMonitoring}
-                      color="primary"
-                      size="small"
-                    />
-                  }
-                  label={
-                    <Typography variant="caption">自动监控</Typography>
-                  }
-                  sx={{ m: 0 }}
-                />
-              </Box>
+              <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>不直接干涉ACE,较安全</Typography>
               <Box display="flex" flexDirection="column" gap={0.6} sx={{ flex: 1, justifyContent: 'flex-end' }}>
-                <Button
-                  variant="contained"
-                  startIcon={<StartIcon />}
-                  onClick={executeOnce}
-                  disabled={loading || isMonitoring}
-                  color="primary"
-                  size="small"
-                  fullWidth
-                >
-                  手动执行
-                </Button>
                 <Button
                   variant="contained"
                   onClick={modifyRegistryPriority}
@@ -830,6 +668,100 @@ function App() {
                     恢复默认
                   </Button>
                 </Box>
+              </Box>
+            </Paper>
+
+            <Paper elevation={2} sx={{ p: 1.5, flex: 1, minWidth: 0, maxWidth: '100%', display: 'flex', flexDirection: 'column' }}
+            >
+              <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>额外限制(危险)</Typography>
+              <Box display="grid" gridTemplateColumns="1fr 1fr 1fr" gap={0.8} sx={{ mb: 1 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={enableBasicCpuLimit}
+                      onChange={(e) => setEnableBasicCpuLimit(e.target.checked)}
+                      disabled={isMonitoring}
+                      color="success"
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Typography variant="caption">基础CPU限制</Typography>
+                  }
+                  sx={{ m: 0 }}
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={enableEfficiencyMode}
+                      onChange={(e) => setEnableEfficiencyMode(e.target.checked)}
+                      disabled={isMonitoring}
+                      color="warning"
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Typography variant="caption">效率模式</Typography>
+                  }
+                  sx={{ m: 0 }}
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={enableIoPriority}
+                      onChange={(e) => setEnableIoPriority(e.target.checked)}
+                      disabled={isMonitoring}
+                      color="error"
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Typography variant="caption">I/O优先级</Typography>
+                  }
+                  sx={{ m: 0 }}
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={enableMemoryPriority}
+                      onChange={(e) => setEnableMemoryPriority(e.target.checked)}
+                      disabled={isMonitoring}
+                      color="error"
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Typography variant="caption">内存优先级</Typography>
+                  }
+                  sx={{ m: 0 }}
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={autoStartEnabled}
+                      onChange={toggleAutoStartup}
+                      color="primary"
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Typography variant="caption">开机自启动</Typography>
+                  }
+                  sx={{ m: 0 }}
+                />
+              </Box>
+              <Box display="flex" flexDirection="column" gap={0.6} sx={{ flex: 1, justifyContent: 'flex-end' }}>
+                <Button
+                  variant="contained"
+                  startIcon={<StartIcon />}
+                  onClick={executeOnce}
+                  disabled={loading || isMonitoring}
+                  color="primary"
+                  size="small"
+                  fullWidth
+                >
+                  执行限制
+                </Button>
               </Box>
             </Paper>
           </Box>
@@ -895,7 +827,7 @@ function App() {
                 <Typography variant="subtitle2" fontWeight="bold">
                   {announcement.title}
                 </Typography>
-                <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-line' }}>
+                <Typography variant="body2" sx={{ whiteSpace: 'pre-line', mb: 2 }}>
                   {announcement.content}
                 </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>

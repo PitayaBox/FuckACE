@@ -5,10 +5,6 @@ use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use winreg::enums::*;
 use winreg::RegKey;
-use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::Duration;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct RestrictResult {
@@ -44,139 +40,13 @@ struct ProcessPerformance {
 
 struct AppState;
 
-#[repr(C)]
-struct GROUP_AFFINITY {
-    mask: usize,
-    group: u16,
-    reserved: [u16; 3],
-}
-
-#[repr(C)]
-struct PROCESSOR_RELATIONSHIP {
-    flags: u8,
-    efficiency_class: u8,
-    reserved: [u8; 20],
-    group_count: u16,
-    group_mask: [GROUP_AFFINITY; 1],
-}
-
-#[repr(C)]
-struct SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX {
-    relationship: u32,
-    size: u32,
-    processor: PROCESSOR_RELATIONSHIP,
-}
-
 fn find_target_core() -> (u32, u64, bool) {
-    match detect_e_cores() {
-        Some((target_core, core_mask)) => {
-            (target_core, core_mask, true)
-        }
-        None => {
-            let system = System::new_all();
-            let total_cores = system.cpus().len() as u32;
-            let target_core = if total_cores > 0 { total_cores - 1 } else { 0 };
-            let core_mask = 1u64 << target_core;
-            
-            (target_core, core_mask, false)
-        }
-    }
-}
-
-fn detect_e_cores() -> Option<(u32, u64)> {
-    unsafe {
-        use windows::Win32::System::SystemInformation::{
-            GetLogicalProcessorInformationEx, RelationProcessorCore
-        };
-        
-        let mut buffer_size: u32 = 0;
-        
-        let _ = GetLogicalProcessorInformationEx(
-            RelationProcessorCore,
-            None,
-            &mut buffer_size
-        );
-        
-        if buffer_size == 0 {
-            eprintln!("[E-Core检测] 无法获取处理器信息缓冲区大小");
-            return None;
-        }
-        
-        let mut buffer: Vec<u8> = vec![0; buffer_size as usize];
-        
-        if GetLogicalProcessorInformationEx(
-            RelationProcessorCore,
-            Some(buffer.as_mut_ptr() as *mut _),
-            &mut buffer_size
-        ).is_err() {
-            eprintln!("[E-Core检测] 获取处理器信息失败");
-            return None;
-        }
-        
-        let mut offset = 0usize;
-        let mut all_cores: Vec<(u32, u8)> = Vec::new();
-        
-        while offset < buffer_size as usize {
-            let info = &*(buffer.as_ptr().add(offset) as *const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX);
-            
-            if info.relationship == 0 {
-                let proc_rel = &info.processor;
-                
-                for i in 0..proc_rel.group_count as usize {
-                    let group_affinity_ptr = (&proc_rel.group_mask[0] as *const GROUP_AFFINITY)
-                        .add(i);
-                    let group_affinity = &*group_affinity_ptr;
-                    
-                    let mask = group_affinity.mask;
-                    let group = group_affinity.group;
-                    
-                    for j in 0..64 {
-                        if (mask & (1 << j)) != 0 {
-                            let cpu_index = (group as u32 * 64) + j;
-                            all_cores.push((cpu_index, proc_rel.efficiency_class));
-                        }
-                    }
-                }
-            }
-            
-            if info.size == 0 {
-                break;
-            }
-            offset += info.size as usize;
-        }
-        
-        if !all_cores.is_empty() {
-            eprintln!("E-Core检测 发现 {} 个逻辑处理器", all_cores.len());
-            let unique_efficiency: std::collections::HashSet<u8> = all_cores.iter().map(|(_, e)| *e).collect();
-            eprintln!("E-Core检测 效率等级: {:?}", unique_efficiency);
-        }
-        
-        if all_cores.len() > 1 {
-            let max_efficiency = all_cores.iter().map(|(_, e)| *e).max()?;
-            let min_efficiency = all_cores.iter().map(|(_, e)| *e).min()?;
-            
-            if max_efficiency > min_efficiency {
-                let e_cores: Vec<u32> = all_cores.iter()
-                    .filter(|(_, e)| *e == max_efficiency)
-                    .map(|(core, _)| *core)
-                    .collect();
-                
-                if !e_cores.is_empty() {
-                    let target_e_core = *e_cores.last().unwrap();
-                    let core_mask = 1u64 << target_e_core;
-                    eprintln!("E-Core检测 识别到混合架构CPU，E-Core效率等级: {}", max_efficiency);
-                    eprintln!("E-Core检测 发现 {} 个E-Core: {:?}", e_cores.len(), e_cores);
-                    eprintln!("E-Core检测 选择最后一个E-Core: {}", target_e_core);
-                    return Some((target_e_core, core_mask));
-                }
-            } else {
-                eprintln!("E-Core检测 所有核心效率等级相同 ({}), 非混合架构CPU", min_efficiency);
-            }
-        }
-        
-        eprintln!("E-Core检测 未检测到E-Core，将使用备用方案");
-        None
-    }
+    let system = System::new_all();
+    let total_cores = system.cpus().len() as u32;
+    let target_core = if total_cores > 0 { total_cores - 1 } else { 0 };
+    let core_mask = 1u64 << target_core;
+    
+    (target_core, core_mask, false)
 }
 
 fn set_process_affinity(pid: Pid, core_mask: u64) -> (bool, Option<String>) {
@@ -441,13 +311,7 @@ fn restrict_target_processes(enable_basic_cpu_limit: bool, enable_efficiency_mod
     let mode_str = if mode_parts.is_empty() { "标准模式".to_string() } else { mode_parts.join("+") };
     message.push_str(&format!("限制模式: {}\n", mode_str));
     
-    if is_e_core {
-        message.push_str(&format!("识别到能效核 (E-Core)\n"));
-        message.push_str(&format!("采用最佳方案：绑定到能效核心 {}\n", target_core));
-    } else {
-        message.push_str(&format!("未识别到能效核，启用备用方案\n"));
-        message.push_str(&format!("备用方案：绑定到最后一个逻辑核心 {}\n", target_core));
-    }
+    message.push_str(&format!("绑定到最后一个逻辑核心 {}\n", target_core));
     
     for (pid, process) in system.processes() {
         let process_name = process.name().to_lowercase();

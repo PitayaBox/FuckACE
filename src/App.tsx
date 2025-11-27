@@ -624,7 +624,7 @@ function App() {
 
             <Paper elevation={2} sx={{ p: 1.5, flex: 1, minWidth: 0, maxWidth: '100%', display: 'flex', flexDirection: 'column' }}
             >
-              <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>不直接干涉ACE,较安全</Typography>
+              <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>被动限制(不直接干涉ACE,较安全)</Typography>
               <Box display="flex" flexDirection="column" gap={0.6} sx={{ flex: 1, justifyContent: 'flex-end' }}>
                 <Button
                   variant="contained"
@@ -673,7 +673,7 @@ function App() {
 
             <Paper elevation={2} sx={{ p: 1.5, flex: 1, minWidth: 0, maxWidth: '100%', display: 'flex', flexDirection: 'column' }}
             >
-              <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>额外限制(危险)</Typography>
+              <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>主动限制(小白不建议使用)</Typography>
               <Box display="grid" gridTemplateColumns="1fr 1fr 1fr" gap={0.8} sx={{ mb: 1 }}>
                 <FormControlLabel
                   control={

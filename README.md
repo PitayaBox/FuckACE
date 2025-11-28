@@ -2,8 +2,8 @@
 ## FuckACE是一个用来优化所有使用ACE的游戏的免安装软件，可以一键设置ACE为效率模式，降低ACE的CPU亲和性，以降低ACE对电脑的性能影响。
 ### 喜欢的话请点点star，谢谢！Ciallo～(∠・ω<)⌒☆
 
-最新版本下载：
-- [直接下载](https://www.mikugame.icu/modpacks)
+最新版本下载（github的一般会延后发布）：
+- [前往MikuGame下载最新版本](https://www.mikugame.icu/modpacks)
   
 相关使用教程请看B站视频：
 - [FuckACE使用教程](https://www.bilibili.com/video/BV1ePCnBpEWp/)
@@ -11,7 +11,7 @@
 反馈问题，或者你有什么建议都可以说！
 - [提出建议！](https://github.com/shshouse/FuckACE/issues/new)
 
-<img width="1336" height="1071" alt="image" src="https://github.com/user-attachments/assets/bf1de5f9-771f-41da-a503-0c81f36ceddc" />
+<img width="1343" height="948" alt="image" src="https://github.com/user-attachments/assets/06baae6b-16b6-4e9a-8ff8-5f2e6c3a93c0" />
 
 注意：<br>
 1.软件不会彻底关闭ACE，只是对其占用进行限制，别开桂嗷。<br>

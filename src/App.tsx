@@ -262,16 +262,31 @@ function App() {
 
 
 
-  const modifyRegistryPriority = useCallback(async () => {
+  const lowerAcePriority = useCallback(async () => {
     try {
       setLoading(true);
-      addLog('开始修改注册表优先级...');
-      const result = await invoke<string>('modify_registry_priority');
-      addLog('注册表修改完成:');
+      addLog('开始降低ACE优先级...');
+      const result = await invoke<string>('lower_ace_priority');
+      addLog('ACE优先级降低完成:');
       result.split('\n').forEach(line => addLog(line));
     } catch (error) {
-      addLog(`修改注册表失败: ${error}`);
-      console.error('修改注册表失败:', error);
+      addLog(`降低ACE优先级失败: ${error}`);
+      console.error('降低ACE优先级失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [addLog]);
+
+  const raiseDeltaPriority = useCallback(async () => {
+    try {
+      setLoading(true);
+      addLog('开始提高三角洲优先级...');
+      const result = await invoke<string>('raise_delta_priority');
+      addLog('三角洲优先级提高完成:');
+      result.split('\n').forEach(line => addLog(line));
+    } catch (error) {
+      addLog(`提高三角洲优先级失败: ${error}`);
+      console.error('提高三角洲优先级失败:', error);
     } finally {
       setLoading(false);
     }
@@ -628,13 +643,23 @@ function App() {
               <Box display="flex" flexDirection="column" gap={0.6} sx={{ flex: 1, justifyContent: 'flex-end' }}>
                 <Button
                   variant="contained"
-                  onClick={modifyRegistryPriority}
+                  onClick={lowerAcePriority}
                   disabled={loading || !systemInfo?.is_admin}
                   color="error"
                   size="small"
                   fullWidth
                 >
-                  一键优化三角洲注册表(需管理员)
+                  降低ACE优先级(需管理员)
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={raiseDeltaPriority}
+                  disabled={loading || !systemInfo?.is_admin}
+                  color="success"
+                  size="small"
+                  fullWidth
+                >
+                  提高三角洲优先级(需管理员)
                 </Button>
                 <Button
                   variant="contained"
@@ -644,7 +669,7 @@ function App() {
                   size="small"
                   fullWidth
                 >
-                  一键优化瓦罗兰特注册表(需管理员)
+                  提高瓦罗兰特优先级(需管理员)
                 </Button>
                 <Box display="flex" gap={0.6}>
                   <Button

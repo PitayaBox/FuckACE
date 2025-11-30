@@ -152,7 +152,7 @@ function App() {
   const [gameProcesses] = useState<string[]>([]);
 
 
-  const { announcements, latestVersion, hasUpdate } = useInitialData('0.5.0');
+  const { announcements, latestVersion, hasUpdate } = useInitialData('0.5.1');
 
   const addLog = useCallback((message: string) => {
     const newLog: LogEntry = {
@@ -411,7 +411,7 @@ function App() {
               />
               <Box>
                 <Typography variant="h5" component="h1" color="primary" sx={{ lineHeight: 1.2 }}>
-                  FuckACE v0.5.0
+                  FuckACE v0.5.1
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   小春正在持续监控并限制ACE占用
@@ -927,7 +927,7 @@ function App() {
                   </Typography>
                 </Alert>
                 <Typography variant="body2" color="text.secondary">
-                  当前版本: v0.5.0
+                  当前版本: v0.5.1
                 </Typography>
               </Box>
             )}

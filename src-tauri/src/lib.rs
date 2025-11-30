@@ -284,7 +284,7 @@ fn set_process_memory_priority(pid: Pid) -> (bool, Option<String>) {
     }
 }
 
-fn restrict_target_processes(enable_basic_cpu_limit: bool, enable_efficiency_mode: bool, enable_io_priority: bool, enable_memory_priority: bool) -> RestrictResult {
+fn restrict_target_processes(enable_cpu_affinity: bool, enable_process_priority: bool, enable_efficiency_mode: bool, enable_io_priority: bool, enable_memory_priority: bool) -> RestrictResult {
     enable_debug_privilege();
     
     let mut system = System::new_all();
@@ -302,7 +302,8 @@ fn restrict_target_processes(enable_basic_cpu_limit: bool, enable_efficiency_mod
     let mut message = String::new();
     
     let mode_parts: Vec<&str> = vec![
-        if enable_basic_cpu_limit { "基础CPU限制" } else { "" },
+        if enable_cpu_affinity { "CPU亲和性" } else { "" },
+        if enable_process_priority { "进程优先级" } else { "" },
         if enable_efficiency_mode { "效率模式" } else { "" },
         if enable_io_priority { "I/O优先级" } else { "" },
         if enable_memory_priority { "内存优先级" } else { "" },
@@ -319,12 +320,12 @@ fn restrict_target_processes(enable_basic_cpu_limit: bool, enable_efficiency_mod
         if process_name.contains("sguard64.exe") {
             sguard64_found = true;
             
-            let (affinity_ok, affinity_err, actual_core) = if enable_basic_cpu_limit {
+            let (affinity_ok, affinity_err, actual_core) = if enable_cpu_affinity {
                 set_process_affinity_with_fallback(*pid, core_mask, is_e_core)
             } else {
                 (false, None, 0)
             };
-            let priority_ok = if enable_basic_cpu_limit {
+            let priority_ok = if enable_process_priority {
                 set_process_priority(*pid)
             } else {
                 false
@@ -385,12 +386,12 @@ fn restrict_target_processes(enable_basic_cpu_limit: bool, enable_efficiency_mod
         if process_name.contains("sguardsvc64.exe") {
             sguardsvc64_found = true;
             
-            let (affinity_ok, affinity_err, actual_core) = if enable_basic_cpu_limit {
+            let (affinity_ok, affinity_err, actual_core) = if enable_cpu_affinity {
                 set_process_affinity_with_fallback(*pid, core_mask, is_e_core)
             } else {
                 (false, None, 0)
             };
-            let priority_ok = if enable_basic_cpu_limit {
+            let priority_ok = if enable_process_priority {
                 set_process_priority(*pid)
             } else {
                 false
@@ -451,12 +452,12 @@ fn restrict_target_processes(enable_basic_cpu_limit: bool, enable_efficiency_mod
         if process_name.contains("weixin.exe") {
             weixin_found = true;
             
-            let (affinity_ok, affinity_err, actual_core) = if enable_basic_cpu_limit {
+            let (affinity_ok, affinity_err, actual_core) = if enable_cpu_affinity {
                 set_process_affinity_with_fallback(*pid, core_mask, is_e_core)
             } else {
                 (false, None, 0)
             };
-            let priority_ok = if enable_basic_cpu_limit {
+            let priority_ok = if enable_process_priority {
                 set_process_priority(*pid)
             } else {
                 false
@@ -544,12 +545,13 @@ fn restrict_target_processes(enable_basic_cpu_limit: bool, enable_efficiency_mod
 #[tauri::command]
 fn restrict_processes(
     _state: State<AppState>,
-    enable_basic_cpu_limit: bool,
+    enable_cpu_affinity: bool,
+    enable_process_priority: bool,
     enable_efficiency_mode: bool,
     enable_io_priority: bool,
     enable_memory_priority: bool,
 ) -> RestrictResult {
-    let result = restrict_target_processes(enable_basic_cpu_limit, enable_efficiency_mode, enable_io_priority, enable_memory_priority);
+    let result = restrict_target_processes(enable_cpu_affinity, enable_process_priority, enable_efficiency_mode, enable_io_priority, enable_memory_priority);
     result
 }
 

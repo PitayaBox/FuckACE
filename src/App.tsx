@@ -140,7 +140,8 @@ function App() {
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const [performance, setPerformance] = useState<ProcessPerformance[]>([]);
-  const [enableBasicCpuLimit, setEnableBasicCpuLimit] = useState(true);
+  const [enableCpuAffinity, setEnableCpuAffinity] = useState(true);
+  const [enableProcessPriority, setEnableProcessPriority] = useState(true);
   const [enableEfficiencyMode, setEnableEfficiencyMode] = useState(false);
   const [enableIoPriority, setEnableIoPriority] = useState(false);
   const [enableMemoryPriority, setEnableMemoryPriority] = useState(false);
@@ -168,7 +169,8 @@ function App() {
       setLoading(true);
 
       const result = await invoke<ProcessStatus>('restrict_processes', {
-        enableBasicCpuLimit,
+        enableCpuAffinity,
+        enableProcessPriority,
         enableEfficiencyMode,
         enableIoPriority,
         enableMemoryPriority
@@ -183,13 +185,14 @@ function App() {
     } finally {
       setLoading(false);
     }
-  }, [addLog, enableBasicCpuLimit, enableEfficiencyMode, enableIoPriority, enableMemoryPriority]);
+  }, [addLog, enableCpuAffinity, enableProcessPriority, enableEfficiencyMode, enableIoPriority, enableMemoryPriority]);
 
   const executeOnce = useCallback(async () => {
     try {
       setIsMonitoring(true);
       const modeStr = [
-        enableBasicCpuLimit && '基础CPU限制',
+        enableCpuAffinity && 'CPU亲和性',
+        enableProcessPriority && '进程优先级',
         enableEfficiencyMode && '效率模式',
         enableIoPriority && 'I/O优先级',
         enableMemoryPriority && '内存优先级'
@@ -201,7 +204,7 @@ function App() {
       addLog(`执行失败: ${error}`);
       setIsMonitoring(false);
     }
-  }, [addLog, executeProcessRestriction, enableBasicCpuLimit, enableEfficiencyMode, enableIoPriority, enableMemoryPriority]);
+  }, [addLog, executeProcessRestriction, enableCpuAffinity, enableProcessPriority, enableEfficiencyMode, enableIoPriority, enableMemoryPriority]);
 
   const fetchSystemInfo = useCallback(async () => {
     try {
@@ -703,15 +706,30 @@ function App() {
                 <FormControlLabel
                   control={
                     <Switch
-                      checked={enableBasicCpuLimit}
-                      onChange={(e) => setEnableBasicCpuLimit(e.target.checked)}
+                      checked={enableCpuAffinity}
+                      onChange={(e) => setEnableCpuAffinity(e.target.checked)}
                       disabled={isMonitoring}
                       color="success"
                       size="small"
                     />
                   }
                   label={
-                    <Typography variant="caption">基础CPU限制</Typography>
+                    <Typography variant="caption">CPU亲和性</Typography>
+                  }
+                  sx={{ m: 0 }}
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={enableProcessPriority}
+                      onChange={(e) => setEnableProcessPriority(e.target.checked)}
+                      disabled={isMonitoring}
+                      color="success"
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Typography variant="caption">进程优先级</Typography>
                   }
                   sx={{ m: 0 }}
                 />

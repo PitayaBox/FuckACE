@@ -772,12 +772,15 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                 TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, .. } => {
                     let app = tray.app_handle();
                     if let Some(window) = app.get_webview_window("main") {
-                        if window.is_visible().unwrap_or(false) {
-                            let _ = window.hide();
-                        } else {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+                TrayIconEvent::DoubleClick { button: tauri::tray::MouseButton::Left, .. } => {
+                    let app = tray.app_handle();
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
                     }
                 }
                 _ => {}

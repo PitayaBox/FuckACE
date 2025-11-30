@@ -310,6 +310,21 @@ function App() {
     }
   }, [addLog]);
 
+  const raiseLeaguePriority = useCallback(async () => {
+    try {
+      setLoading(true);
+      addLog('开始提高英雄联盟优先级...');
+      const result = await invoke<string>('raise_league_priority');
+      addLog('英雄联盟优先级修改完成:');
+      result.split('\n').forEach(line => addLog(line));
+    } catch (error) {
+      addLog(`提高英雄联盟优先级失败: ${error}`);
+      console.error('提高英雄联盟优先级失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [addLog]);
+
   const checkRegistryPriority = useCallback(async () => {
     try {
       setLoading(true);
@@ -652,7 +667,7 @@ function App() {
                   size="small"
                   fullWidth
                 >
-                  降低ACE优先级(需管理员)
+                  1.降低ACE优先级(需管理员)
                 </Button>
                 <Button
                   variant="contained"
@@ -662,17 +677,27 @@ function App() {
                   size="small"
                   fullWidth
                 >
-                  提高三角洲优先级(需管理员)
+                  2.提高三角洲优先级(需管理员)
                 </Button>
                 <Button
                   variant="contained"
                   onClick={modifyValorantRegistryPriority}
                   disabled={loading || !systemInfo?.is_admin}
-                  color="secondary"
+                  color="success"
                   size="small"
                   fullWidth
                 >
-                  提高瓦罗兰特优先级(需管理员)
+                  2.提高瓦罗兰特优先级(需管理员)
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={raiseLeaguePriority}
+                  disabled={loading || !systemInfo?.is_admin}
+                  color="success"
+                  size="small"
+                  fullWidth
+                >
+                  2.提高英雄联盟优先级(需管理员)
                 </Button>
                 <Box display="flex" gap={0.6}>
                   <Button

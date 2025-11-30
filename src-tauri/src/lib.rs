@@ -1014,6 +1014,45 @@ fn modify_valorant_registry_priority() -> Result<String, String> {
 }
 
 #[tauri::command]
+fn raise_league_priority() -> Result<String, String> {
+    if !is_elevated() {
+        return Err("需要管理员权限才能修改注册表".to_string());
+    }
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let base_path = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options";
+    let mut results = Vec::new();
+    let configs = vec![
+        ("League of Legends.exe", 3u32, 3u32),
+    ];
+    
+    for (exe_name, cpu_priority, io_priority) in configs {
+        let key_path = format!(r"{}\{}\PerfOptions", base_path, exe_name);
+        
+        match hklm.create_subkey(&key_path) {
+            Ok((key, _)) => {
+                let mut success = true;
+                if let Err(e) = key.set_value("CpuPriorityClass", &cpu_priority) {
+                    results.push(format!("{}:设置CPU优先级失败:{}", exe_name, e));
+                    success = false;
+                }
+                if let Err(e) = key.set_value("IoPriority", &io_priority) {
+                    results.push(format!("{}:设置I/O优先级失败:{}", exe_name, e));
+                    success = false;
+                }
+                if success {
+                    results.push(format!("{}:设置成功(CPU:{},I/O:{})", exe_name, cpu_priority, io_priority));
+                }
+            }
+            Err(e) => {
+                results.push(format!("{}:创建注册表项失败:{}", exe_name, e));
+            }
+        }
+    }
+    
+    Ok(results.join("\n"))
+}
+
+#[tauri::command]
 fn check_registry_priority() -> Result<String, String> {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let base_path = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options";
@@ -1025,6 +1064,7 @@ fn check_registry_priority() -> Result<String, String> {
         "SGuard64.exe",
         "SGuardSvc64.exe",
         "VALORANT-Win64-Shipping.exe",
+        "League of Legends.exe",
     ];
     
     for exe_name in exe_names {
@@ -1073,6 +1113,7 @@ fn reset_registry_priority() -> Result<String, String> {
         "SGuard64.exe",
         "SGuardSvc64.exe",
         "VALORANT-Win64-Shipping.exe",
+        "League of Legends.exe",
     ];
     
     for exe_name in exe_names {
@@ -1135,6 +1176,7 @@ pub fn run() {
             lower_ace_priority,
             raise_delta_priority, 
             modify_valorant_registry_priority,
+            raise_league_priority,
             check_registry_priority, 
             reset_registry_priority,
             check_game_processes,

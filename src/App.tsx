@@ -3,6 +3,7 @@ import { useInitialData } from './hooks/useOptimizedSupabase';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
 import { Window } from '@tauri-apps/api/window';
+import { storage } from './utils/storage';
 import {
   Container,
   Paper,
@@ -146,13 +147,13 @@ function App() {
   const [enableIoPriority, setEnableIoPriority] = useState(false);
   const [enableMemoryPriority, setEnableMemoryPriority] = useState(false);
   const [autoStartEnabled, setAutoStartEnabled] = useState(false);
+  const [rememberChoices, setRememberChoices] = useState(false);
   const [showAnnouncements, setShowAnnouncements] = useState(false);
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [gameProcesses] = useState<string[]>([]);
 
-
-  const { announcements, latestVersion, hasUpdate } = useInitialData('0.5.1');
+  const { announcements, latestVersion, hasUpdate } = useInitialData('0.5.2');
 
   const addLog = useCallback((message: string) => {
     const newLog: LogEntry = {
@@ -325,6 +326,21 @@ function App() {
     }
   }, [addLog]);
 
+  const raiseArenaPriority = useCallback(async () => {
+    try {
+      setLoading(true);
+      addLog('开始提高暗区突围优先级...');
+      const result = await invoke<string>('raise_arena_priority');
+      addLog('暗区突围优先级修改完成:');
+      result.split('\n').forEach(line => addLog(line));
+    } catch (error) {
+      addLog(`提高暗区突围优先级失败: ${error}`);
+      console.error('提高暗区突围优先级失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [addLog]);
+
   const checkRegistryPriority = useCallback(async () => {
     try {
       setLoading(true);
@@ -368,10 +384,16 @@ function App() {
   }, [addLog, fetchSystemInfo, fetchPerformance, checkAutoStart]);
 
   useEffect(() => {
-    if (logContainerRef.current) {
-      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    const cached = storage.getChoices();
+    if (cached.rememberChoices) {
+      if (cached.enableCpuAffinity !== undefined) setEnableCpuAffinity(cached.enableCpuAffinity);
+      if (cached.enableProcessPriority !== undefined) setEnableProcessPriority(cached.enableProcessPriority);
+      if (cached.enableEfficiencyMode !== undefined) setEnableEfficiencyMode(cached.enableEfficiencyMode);
+      if (cached.enableIoPriority !== undefined) setEnableIoPriority(cached.enableIoPriority);
+      if (cached.enableMemoryPriority !== undefined) setEnableMemoryPriority(cached.enableMemoryPriority);
+      setRememberChoices(true);
     }
-  }, [logs]);
+  }, []);
 
   useEffect(() => {
     const unlisten = Window.getCurrent().listen('show-close-confirm', () => {
@@ -426,7 +448,7 @@ function App() {
               />
               <Box>
                 <Typography variant="h5" component="h1" color="primary" sx={{ lineHeight: 1.2 }}>
-                  FuckACE v0.5.1
+                  FuckACE v0.5.2
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   小春正在持续监控并限制ACE占用
@@ -657,8 +679,8 @@ function App() {
 
             <Paper elevation={2} sx={{ p: 1.5, flex: 1, minWidth: 0, maxWidth: '100%', display: 'flex', flexDirection: 'column' }}
             >
-              <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>被动限制(不直接干涉ACE,较安全)</Typography>
-              <Box display="flex" flexDirection="column" gap={0.6} sx={{ flex: 1, justifyContent: 'flex-end' }}>
+              <Typography variant="subtitle1" gutterBottom sx={{ mb: 0.5, fontWeight: 600 }}>被动限制(不直接干涉ACE，较安全)</Typography>
+              <Box display="flex" flexDirection="column" gap={0.4} sx={{ flex: 1 }}>
                 <Button
                   variant="contained"
                   onClick={lowerAcePriority}
@@ -666,40 +688,53 @@ function App() {
                   color="error"
                   size="small"
                   fullWidth
+                  sx={{ py: 0.3, fontSize: '0.75rem' }}
                 >
-                  1.降低ACE优先级(需管理员)
+                  降低ACE优先级
                 </Button>
-                <Button
-                  variant="contained"
-                  onClick={raiseDeltaPriority}
-                  disabled={loading || !systemInfo?.is_admin}
-                  color="success"
-                  size="small"
-                  fullWidth
-                >
-                  2.提高三角洲优先级(需管理员)
-                </Button>
-                <Button
-                  variant="contained"
-                  onClick={modifyValorantRegistryPriority}
-                  disabled={loading || !systemInfo?.is_admin}
-                  color="success"
-                  size="small"
-                  fullWidth
-                >
-                  2.提高瓦罗兰特优先级(需管理员)
-                </Button>
-                <Button
-                  variant="contained"
-                  onClick={raiseLeaguePriority}
-                  disabled={loading || !systemInfo?.is_admin}
-                  color="success"
-                  size="small"
-                  fullWidth
-                >
-                  2.提高英雄联盟优先级(需管理员)
-                </Button>
-                <Box display="flex" gap={0.6}>
+                <Box display="grid" gridTemplateColumns="1fr 1fr" gap={0.4}>
+                  <Button
+                    variant="contained"
+                    onClick={raiseDeltaPriority}
+                    disabled={loading || !systemInfo?.is_admin}
+                    color="success"
+                    size="small"
+                    sx={{ py: 0.3, fontSize: '0.7rem' }}
+                  >
+                    三角洲优化
+                  </Button>
+                  <Button
+                    variant="contained"
+                    onClick={modifyValorantRegistryPriority}
+                    disabled={loading || !systemInfo?.is_admin}
+                    color="success"
+                    size="small"
+                    sx={{ py: 0.3, fontSize: '0.7rem' }}
+                  >
+                    瓦罗兰特优化
+                  </Button>
+                  <Button
+                    variant="contained"
+                    onClick={raiseLeaguePriority}
+                    disabled={loading || !systemInfo?.is_admin}
+                    color="success"
+                    size="small"
+                    sx={{ py: 0.3, fontSize: '0.7rem' }}
+                  >
+                    英雄联盟优化
+                  </Button>
+                  <Button
+                    variant="contained"
+                    onClick={raiseArenaPriority}
+                    disabled={loading || !systemInfo?.is_admin}
+                    color="success"
+                    size="small"
+                    sx={{ py: 0.3, fontSize: '0.7rem' }}
+                  >
+                    暗区突围优化
+                  </Button>
+                </Box>
+                <Box display="flex" gap={0.4}>
                   <Button
                     variant="outlined"
                     onClick={checkRegistryPriority}
@@ -707,6 +742,7 @@ function App() {
                     color="info"
                     size="small"
                     fullWidth
+                    sx={{ py: 0.3, fontSize: '0.7rem' }}
                   >
                     检查状态
                   </Button>
@@ -717,6 +753,7 @@ function App() {
                     color="warning"
                     size="small"
                     fullWidth
+                    sx={{ py: 0.3, fontSize: '0.7rem' }}
                   >
                     恢复默认
                   </Button>
@@ -726,8 +763,8 @@ function App() {
 
             <Paper elevation={2} sx={{ p: 1.5, flex: 1, minWidth: 0, maxWidth: '100%', display: 'flex', flexDirection: 'column' }}
             >
-              <Typography variant="subtitle1" gutterBottom sx={{ mb: 1, fontWeight: 600 }}>主动限制(小白不建议使用)</Typography>
-              <Box display="grid" gridTemplateColumns="1fr 1fr 1fr" gap={0.8} sx={{ mb: 1 }}>
+              <Typography variant="subtitle1" gutterBottom sx={{ mb: 0.5, fontWeight: 600 }}>主动限制(小白不建议使用)</Typography>
+              <Box display="grid" gridTemplateColumns="1fr 1fr" gap={0.5} sx={{ mb: 0.5 }}>
                 <FormControlLabel
                   control={
                     <Switch
@@ -952,7 +989,7 @@ function App() {
                   </Typography>
                 </Alert>
                 <Typography variant="body2" color="text.secondary">
-                  当前版本: v0.5.1
+                  当前版本: v0.5.2
                 </Typography>
               </Box>
             )}
@@ -992,6 +1029,20 @@ function App() {
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
               选择"最小化到托盘"将保持程序在后台运行，选择"彻底退出"将关闭程序。
             </Typography>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={rememberChoices}
+                  onChange={(e) => setRememberChoices(e.target.checked)}
+                  color="primary"
+                  size="small"
+                />
+              }
+              label={
+                <Typography variant="body2">记住选择</Typography>
+              }
+              sx={{ mt: 2 }}
+            />
           </DialogContent>
           <DialogActions>
             <Button
@@ -1002,6 +1053,16 @@ function App() {
             </Button>
             <Button
               onClick={async () => {
+                if (rememberChoices) {
+                  storage.saveChoices({
+                    enableCpuAffinity,
+                    enableProcessPriority,
+                    enableEfficiencyMode,
+                    enableIoPriority,
+                    enableMemoryPriority,
+                    rememberChoices: true
+                  });
+                }
                 await invoke('show_close_dialog');
                 setShowCloseConfirm(false);
               }}

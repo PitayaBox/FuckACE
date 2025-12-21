@@ -102,8 +102,6 @@ interface ProcessStatus {
   sguard64_restricted: boolean;
   sguardsvc64_found: boolean;
   sguardsvc64_restricted: boolean;
-  weixin_found: boolean;
-  weixin_restricted: boolean;
   message: string;
 }
 
@@ -153,7 +151,7 @@ function App() {
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [gameProcesses] = useState<string[]>([]);
 
-  const { announcements, latestVersion, hasUpdate } = useInitialData('0.5.2');
+  const { announcements, latestVersion, hasUpdate } = useInitialData('0.5.3');
 
   const addLog = useCallback((message: string) => {
     const newLog: LogEntry = {
@@ -448,7 +446,7 @@ function App() {
               />
               <Box>
                 <Typography variant="h5" component="h1" color="primary" sx={{ lineHeight: 1.2 }}>
-                  FuckACE v0.5.2
+                  FuckACE v0.5.3
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   小春正在持续监控并限制ACE占用
@@ -482,22 +480,22 @@ function App() {
               <Button
                 variant="outlined"
                 startIcon={<GameIcon />}
-                onClick={async () => await openExternalLink('https://www.mikugame.icu/')}
+                onClick={async () => await openExternalLink('https://mikugame.icu/')}
                 sx={{ minWidth: 'auto', px: 0.8 }}
                 size="small"
                 title="MikuGame - 初音游戏库"
               >
-                游戏资源
+                免费游戏
               </Button>
               <Button
                 variant="outlined"
                 startIcon={<ModIcon />}
-                onClick={async () => await openExternalLink('https://www.mikumod.com/')}
+                onClick={async () => await openExternalLink('https://mikumod.com/')}
                 sx={{ minWidth: 'auto', px: 0.8 }}
                 size="small"
                 title="MikuMod - 游戏模组社区"
               >
-                模组社区
+                免费模组
               </Button>
               <Button
                 variant="outlined"
@@ -580,17 +578,7 @@ function App() {
                   <ListItemText primary="SGuardSvc64.exe" primaryTypographyProps={{ variant: 'body2', fontSize: '0.85rem' }} />
                 </ListItem>
                 <Divider />
-                <ListItem secondaryAction={
-                  <Chip
-                    label={getProcessStatusText(processStatus?.weixin_found || false, processStatus?.weixin_restricted || false)}
-                    color={getProcessStatusColor(processStatus?.weixin_found || false, processStatus?.weixin_restricted || false)}
-                    size="small"
-                  />
-                }
-                  sx={{ py: 0.3 }}
-                >
-                  <ListItemText primary="Weixin.exe" primaryTypographyProps={{ variant: 'body2', fontSize: '0.85rem' }} />
-                </ListItem>
+
               </List>
             </Paper>
 
@@ -871,12 +859,12 @@ function App() {
             </Paper>
           </Box>
 
-          <Paper elevation={2} sx={{ p: 1.5, flex: '0 0 auto', maxWidth: '100%' }}>
+          <Paper elevation={2} sx={{ p: 1.5, flex: 1, maxWidth: '100%', minHeight: 120 }}>
             <Box
               ref={logContainerRef}
               sx={{
-                height: 80,
-                maxHeight: 80,
+                height: '100%',
+                minHeight: 80,
                 overflowY: 'auto',
                 border: '1px solid',
                 borderColor: 'divider',
@@ -989,7 +977,7 @@ function App() {
                   </Typography>
                 </Alert>
                 <Typography variant="body2" color="text.secondary">
-                  当前版本: v0.5.2
+                  当前版本: v0.5.3
                 </Typography>
               </Box>
             )}
@@ -1060,6 +1048,7 @@ function App() {
                     enableEfficiencyMode,
                     enableIoPriority,
                     enableMemoryPriority,
+                    autoStartEnabled,
                     rememberChoices: true
                   });
                 }

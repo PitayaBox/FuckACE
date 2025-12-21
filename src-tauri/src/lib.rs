@@ -13,8 +13,6 @@ struct RestrictResult {
     sguard64_restricted: bool,
     sguardsvc64_found: bool,
     sguardsvc64_restricted: bool,
-    weixin_found: bool,
-    weixin_restricted: bool,
     message: String,
 }
 
@@ -296,8 +294,6 @@ fn restrict_target_processes(enable_cpu_affinity: bool, enable_process_priority:
     let mut sguard64_restricted = false;
     let mut sguardsvc64_found = false;
     let mut sguardsvc64_restricted = false;
-    let mut weixin_found = false;
-    let mut weixin_restricted = false;
     
     let mut message = String::new();
     
@@ -449,71 +445,7 @@ fn restrict_target_processes(enable_cpu_affinity: bool, enable_process_priority:
             }
         }
         
-        if process_name.contains("weixin.exe") {
-            weixin_found = true;
-            
-            let (affinity_ok, affinity_err, actual_core) = if enable_cpu_affinity {
-                set_process_affinity_with_fallback(*pid, core_mask, is_e_core)
-            } else {
-                (false, None, 0)
-            };
-            let priority_ok = if enable_process_priority {
-                set_process_priority(*pid)
-            } else {
-                false
-            };
-            
-            let (efficiency_ok, io_priority_ok, mem_priority_ok) = {
-                let (eff_ok, _) = if enable_efficiency_mode {
-                    set_process_efficiency_mode(*pid)
-                } else {
-                    (false, None)
-                };
-                let (io_ok, _) = if enable_io_priority {
-                    set_process_io_priority(*pid)
-                } else {
-                    (false, None)
-                };
-                let (mem_ok, _) = if enable_memory_priority {
-                    set_process_memory_priority(*pid)
-                } else {
-                    (false, None)
-                };
-                (eff_ok, io_ok, mem_ok)
-            };
-            
-            let mut details = Vec::new();
-            if affinity_ok {
-                details.push(format!("CPU亲和性→核心{}", actual_core));
-            } else if let Some(err) = &affinity_err {
-                details.push(format!("CPU亲和性✗({})", err));
-            } else {
-                details.push("CPU亲和性✗".to_string());
-            }
-            
-            if priority_ok {
-                details.push("优先级→最低".to_string());
-            } else {
-                details.push("优先级✗".to_string());
-            }
-            
-            if efficiency_ok {
-                details.push("效率模式✓".to_string());
-            }
-            if io_priority_ok {
-                details.push("I/O优先级✓".to_string());
-            }
-            if mem_priority_ok {
-                details.push("内存优先级✓".to_string());
-            }
-            
-            if affinity_ok || priority_ok || efficiency_ok || io_priority_ok || mem_priority_ok {
-                weixin_restricted = true;
-                message.push_str(&format!("Weixin.exe (PID: {}) [{}]\n", pid, details.join(", ")));
-            } else {
-                message.push_str(&format!("Weixin.exe (PID: {}) 所有限制均失败 [{}]\n", pid, details.join(", ")));
-            }
-        }
+
         
     }
     
@@ -525,10 +457,6 @@ fn restrict_target_processes(enable_cpu_affinity: bool, enable_process_priority:
         message.push_str("未找到SGuardSvc64.exe进程\n");
     }
     
-    if !weixin_found {
-        message.push_str("未找到Weixin.exe进程\n");
-    }
-    
     
     RestrictResult {
         target_core,
@@ -536,8 +464,6 @@ fn restrict_target_processes(enable_cpu_affinity: bool, enable_process_priority:
         sguard64_restricted,
         sguardsvc64_found,
         sguardsvc64_restricted,
-        weixin_found,
-        weixin_restricted,
         message,
     }
 }
@@ -719,7 +645,7 @@ fn get_process_performance() -> Vec<ProcessPerformance> {
     std::thread::sleep(std::time::Duration::from_millis(200));
     system.refresh_processes();
     
-    let target_names = vec!["sguard64.exe", "sguardsvc64.exe", "weixin.exe"];
+    let target_names = vec!["sguard64.exe", "sguardsvc64.exe"];
     let mut performances = Vec::new();
     
     for (pid, process) in system.processes() {
@@ -846,7 +772,25 @@ fn enable_autostart() -> Result<String, String> {
     
     let exe_path = get_exe_path()?;
     
-    key.set_value("FuckACE", &exe_path)
+    // 检查文件是否存在，如果不存在则使用当前目录的相对路径
+    let final_path = if std::path::Path::new(&exe_path).exists() {
+        exe_path
+    } else {
+        // 如果绝对路径不存在，尝试使用当前工作目录的相对路径
+        let current_dir = std::env::current_dir()
+            .map_err(|e| format!("获取当前目录失败: {}", e))?;
+        let exe_name = std::path::Path::new(&exe_path)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| "无法获取可执行文件名".to_string())?;
+        
+        let relative_path = current_dir.join(exe_name);
+        relative_path.to_str()
+            .ok_or_else(|| "路径转换失败".to_string())?
+            .to_string()
+    };
+    
+    key.set_value("FuckACE", &final_path)
         .map_err(|e| format!("设置注册表值失败: {}", e))?;
     
     Ok("开机自启动已启用".to_string())
@@ -877,7 +821,30 @@ fn check_autostart() -> Result<bool, String> {
         .map_err(|_| "打开注册表失败".to_string())?;
     
     match key.get_value::<String, _>("FuckACE") {
-        Ok(_) => Ok(true),
+        Ok(registry_path) => {
+            // 检查注册表中的路径是否存在
+            if std::path::Path::new(&registry_path).exists() {
+                Ok(true)
+            } else {
+                // 路径不存在，检查当前目录的相对路径
+                let current_exe = get_exe_path()?;
+                let current_dir = std::env::current_dir()
+                    .map_err(|e| format!("获取当前目录失败: {}", e))?;
+                let exe_name = std::path::Path::new(&current_exe)
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .ok_or_else(|| "无法获取可执行文件名".to_string())?;
+                
+                let relative_path = current_dir.join(exe_name);
+                if relative_path.exists() {
+                    // 路径不匹配但文件存在，返回false表示需要重新设置
+                    Ok(false)
+                } else {
+                    // 文件不存在，返回false
+                    Ok(false)
+                }
+            }
+        },
         Err(_) => Ok(false),
     }
 }

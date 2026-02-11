@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "FuckACE",
+  "productName": "PitayaBox",
   "version": "0.1.0",
-  "identifier": "com.shshouse.FuckACE",
+  "identifier": "com.shshouse.PitayaBox",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:8787",
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "FuckACE",
+        "title": "PitayaBox",
         "width": 900,
         "height": 700,
         "resizable": true,
@@ -57,7 +57,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "FuckACE",
+        "title": "PitayaBox",
         "width": 900,
         "height": 700,
         "resizable": true,

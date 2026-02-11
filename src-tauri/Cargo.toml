@@ -1,21 +1,11 @@
 [package]
-name = "FuckACE"
+name = "pitayabox"
 version = "0.5.3"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
 
-[package.metadata.windows.manifest]
-path = "src/mainfest.xml"
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[lib]
-# The `_lib` suffix may seem redundant but it is necessary
-# to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "fuck_ace_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -28,7 +18,19 @@ tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sysinfo = "0.30"
-windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp", "Win32_System_SystemInformation", "Win32_Security"] }
-tokio = { version = "1", features = ["full"] }
 winreg = "0.52"
+tokio = { version = "1", features = ["full"] }
 
+# 核心：Windows API 依赖配置 (v0.58)
+[dependencies.windows]
+version = "0.58"
+features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",              # 线程和进程管理
+    "Win32_System_Diagnostics_ToolHelp",   # 进程快照
+    "Win32_System_SystemInformation",      # 系统信息
+    "Win32_Security",                      # 权限处理
+    "Win32_System_ProcessStatus",          # 关键：用于内存清理 (EmptyWorkingSet)
+    "Win32_System_Power",                  # 关键：用于效率模式 (EcoQoS)
+    "Win32_System_Registry"                # 注册表支持
+]

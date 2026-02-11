@@ -691,7 +691,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     ])?;
     
     let _tray = TrayIconBuilder::with_id("main-tray")
-        .tooltip("FuckACE")
+        .tooltip("PitayaBox")
         .icon(app.default_window_icon().unwrap().clone())
         .menu(&menu)
         .show_menu_on_left_click(false)
@@ -749,7 +749,7 @@ async fn show_close_dialog(app_handle: AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 fn close_application(_app_handle: AppHandle) -> Result<String, String> {
-    //退出FuckACE/(ㄒoㄒ)/~~
+    //退出PitayaBox/(ㄒoㄒ)/~~
     std::process::exit(0);
 }
 
@@ -790,7 +790,7 @@ fn enable_autostart() -> Result<String, String> {
             .to_string()
     };
     
-    key.set_value("FuckACE", &final_path)
+    key.set_value("PitayaBox", &final_path)
         .map_err(|e| format!("设置注册表值失败: {}", e))?;
     
     Ok("开机自启动已启用".to_string())
@@ -805,7 +805,7 @@ fn disable_autostart() -> Result<String, String> {
         .open_subkey_with_flags(path, KEY_WRITE)
         .map_err(|e| format!("打开注册表失败: {}", e))?;
     
-    key.delete_value("FuckACE")
+    key.delete_value("PitayaBox")
         .map_err(|e| format!("删除注册表值失败: {}", e))?;
     
     Ok("开机自启动已禁用".to_string())
@@ -820,7 +820,7 @@ fn check_autostart() -> Result<bool, String> {
         .open_subkey(path)
         .map_err(|_| "打开注册表失败".to_string())?;
     
-    match key.get_value::<String, _>("FuckACE") {
+    match key.get_value::<String, _>("PitayaBox") {
         Ok(registry_path) => {
             // 检查注册表中的路径是否存在
             if std::path::Path::new(&registry_path).exists() {

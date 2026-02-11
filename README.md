@@ -1,17 +1,43 @@
-# PitayaBox
-## PitayaBox是一个用来优化所有使用ACE的游戏的免安装软件，可以一键设置ACE进程为效率模式和绑定到最后一个小核心，以降低ACE对电脑的性能影响。
-### 喜欢的话请点点star，谢谢！Ciallo～(∠・ω<)⌒☆
+# 🐉 PitayaBox (火龙果箱)
 
-最新版本下载（github的一般会延后发布）：
-- [前往MikuGame下载最新版本](https://www.mikugame.icu/modpacks)
-  
-相关使用教程请看B站视频：
-- [PitayaBox使用教程](https://www.bilibili.com/video/BV1ePCnBpEWp/)
+[![Tauri v2](https://img.shields.io/badge/Tauri-v2-blue?logo=tauri)](https://tauri.app/)
+[![Rust](https://img.shields.io/badge/Rust-1.75+-orange?logo=rust)](https://www.rust-lang.org/)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-反馈问题，或者有什么建议都可以说喵＞﹏＜
-- [提出建议！](https://github.com/shshouse/PitayaBox/issues/new)
+**PitayaBox** 是一款专为 Windows 玩家设计的轻量级腾讯ace系统优化工具。它利用 Rust 编写的后端内核，能够精准地对某些“维护游戏公平正义的进程”（如游戏反作弊程序 ACE/SGuard）进行系统级的降权和限制，从而释放 CPU 核心性能，提升游戏流畅度。
 
-<img width="1343" height="948" alt="image" src="https://github.com/user-attachments/assets/06baae6b-16b6-4e9a-8ff8-5f2e6c3a93c0" />
+## ✨ 核心功能
+
+- **🚀 进程压制**：实时监控 `SGuard64.exe` 等进程，强制将其绑定到最后一个 CPU 核心，并设置优先级为“空闲（Idle）”。
+- **🔥 注册表降权**：一键通过 IFEO 注册表持久化降低 ACE 运行优先级，彻底解决其在后台抢占资源的问题。
+- **🎮 游戏专项优化**：
+    - **三角洲行动**：提升游戏进程优先级。
+    - **瓦罗兰特 (VALORANT)**：优化系统响应性能。
+- **⚡ 效率模式 (EcoQoS)**：在 Win11 系统上强制开启进程效率模式，最大程度降低能耗。
+- **🛠️ 系统工具**：支持开机自启动管理、内存自动清理及实时性能监控雷达。
+
+## 📸 软件截图
+
+<img width="1251" height="1281" alt="image" src="https://github.com/user-attachments/assets/7604a007-e57f-444f-82eb-40b5cb2c5905" />
+
+
+## 📥 安装运行
+
+### 开发环境准备
+1. 安装 [Node.js](https://nodejs.org/)。
+2. 安装 [Rust 编译环境](https://www.rust-lang.org/tools/install)。
+3. 安装 [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (Win10/11 通常已内置)。
+
+### 运行步骤
+```bash
+# 安装前端依赖
+npm install
+
+# 启动开发环境
+npm run tauri dev
+
+# 打包发布 构建正式版 .exe
+npm run tauri build
 
 注意：<br>
 1.软件不会彻底关闭ACE，只是对其占用进行限制，别开桂嗷。<br>
@@ -31,7 +57,7 @@
 1.SGuard64.exe <br>
 2.SGuardSvc64.exe <br>
 
-## 开发者
+## 开发者（真正的开发者 我只是folk了项目 进行了修改）
 - 开发者: [shshouse](https://github.com/shshouse)
 - Bilibili: [shshouse](https://space.bilibili.com/3493127123897196)
 - 爱发电: [shshouse](https://afdian.com/a/shshouse)

@@ -28,9 +28,9 @@
 ## 📥 安装运行
 
 ### 开发环境准备
-1. 安装 [Node.js](https://nodejs.org/)。
-2. 安装 [Rust 编译环境](https://www.rust-lang.org/tools/install)。
-3. 安装 [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (Win10/11 通常已内置)。
+#1. 安装 [Node.js](https://nodejs.org/)。
+#2. 安装 [Rust 编译环境](https://www.rust-lang.org/tools/install)。
+#3. 安装 [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (Win10/11 通常已内置)。
 
 ### 运行步骤
 ```bash
@@ -46,22 +46,22 @@ npm run tauri build
 
 ## 核心机制
 ### 1.被动限制：
-通过注册表修改，一键降低ACE的CPU优先级和I/O优先级，同时提高对应游戏优先级。
+#通过注册表修改，一键降低ACE的CPU优先级和I/O优先级，同时提高对应游戏优先级。
 
 ### 2.主动限制：
-在主动限制下，可以额外对ACE进行限制：<br>
-1.绑定到最后一个核心(一般是小核)<br>
-2.将ACE设置为效率模式(减低占用)<br>
-3.降低ACE的内存优先性<br>
+#在主动限制下，可以额外对ACE进行限制：<br>
+#1.绑定到最后一个核心(一般是小核)<br>
+#2.将ACE设置为效率模式(减低占用)<br>
+#3.降低ACE的内存优先性<br>
 
-将被执行限制的进程：<br>
-1.SGuard64.exe <br>
-2.SGuardSvc64.exe <br>
+#将被执行限制的进程：<br>
+#1.SGuard64.exe <br>
+#2.SGuardSvc64.exe <br>
 
 ## 开发者（真正的开发者 我只是folk了项目 进行了修改）
-- 开发者: [shshouse](https://github.com/shshouse)
-- Bilibili: [shshouse](https://space.bilibili.com/3493127123897196)
-- 爱发电: [shshouse](https://afdian.com/a/shshouse)
+#- 开发者: [shshouse](https://github.com/shshouse)
+#- Bilibili: [shshouse](https://space.bilibili.com/3493127123897196)
+#- 爱发电: [shshouse](https://afdian.com/a/shshouse)
 
 ## 免责声明
-本软件仅供技术研究和学习使用，使用本软件造成的任何后果由使用者自行承担。
+#本软件仅供技术研究和学习使用，使用本软件造成的任何后果由使用者自行承担。

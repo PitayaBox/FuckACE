@@ -22,7 +22,8 @@
 
 ## 📸 软件截图
 
-<img width="1251" height="1281" alt="image" src="https://github.com/user-attachments/assets/7604a007-e57f-444f-82eb-40b5cb2c5905" />
+<img width="1218" height="1070" alt="image" src="https://github.com/user-attachments/assets/776ee218-53c6-4a49-b617-3d871a56456f" />
+
 
 
 ## 📥 安装运行

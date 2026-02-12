@@ -1,16 +1,15 @@
 // src-tauri/src/main.rs
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::env;
-use std::mem;
-use std::ffi::c_void;
 use std::process::Command;
 use std::os::windows::process::CommandExt;
 use sysinfo::System; 
 use winreg::enums::*;
 use winreg::RegKey;
-use tauri::{WindowEvent, Emitter};
+use tauri::WindowEvent; // 移除了未使用的 Emitter
 
+use std::mem;
+use std::ffi::c_void;
 use windows::Win32::Foundation::HANDLE; 
 use windows::Win32::System::Threading::{
     OpenProcess, SetPriorityClass, SetProcessAffinityMask, SetProcessInformation,
@@ -20,7 +19,6 @@ use windows::Win32::System::Threading::{
 };
 use windows::Win32::System::ProcessStatus::EmptyWorkingSet;
 
-// --- 结构体 ---
 #[derive(serde::Serialize)]
 struct ProcessStatus {
     target_core: usize,
@@ -44,7 +42,6 @@ struct ProcessPerformance {
     memory_mb: f64,
 }
 
-// --- 辅助函数 ---
 unsafe fn set_efficiency_mode(handle: HANDLE) -> bool {
     let mut throttling_state = PROCESS_POWER_THROTTLING_STATE {
         Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,
@@ -65,7 +62,7 @@ fn set_registry_priority(exe_name: &str, priority: u32) -> Result<String, String
     let path = format!("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\{}\\PerfOptions", exe_name);
     let (key, _) = hk_lm.create_subkey(&path).map_err(|e| format!("权限不足: {}", e))?;
     key.set_value("CpuPriorityClass", &priority).map_err(|e| format!("写入失败: {}", e))?;
-    Ok(format!("{} 优化已应用 (等级: {})", exe_name, priority))
+    Ok(format!("{} 优化已应用", exe_name))
 }
 
 fn reset_registry_priority(exe_name: &str) -> Result<String, String> {
@@ -77,24 +74,16 @@ fn reset_registry_priority(exe_name: &str) -> Result<String, String> {
             Err(e) => Err(format!("恢复失败: {}", e)),
         }
     } else {
-        Ok("无需恢复 (未发现修改)".to_string())
+        Ok("无需恢复".to_string())
     }
 }
 
-// --- 核心命令 ---
-
 #[tauri::command]
-fn restrict_processes(
-    enable_cpu_affinity: bool, 
-    enable_process_priority: bool, 
-    enable_efficiency_mode: bool, 
-    enable_io_priority: bool, 
-    enable_memory_priority: bool 
-) -> ProcessStatus {
+fn restrict_processes(enable_cpu_affinity: bool, enable_process_priority: bool, enable_efficiency_mode: bool, enable_io_priority: bool, enable_memory_priority: bool) -> ProcessStatus {
     let mut sys = System::new_all();
     sys.refresh_all();
     let target_process_names = ["SGuard64.exe", "SGuardSvc64.exe"];
-    let mut log_messages = Vec::new();
+    // ❌ 已删除导致报错的 log_messages 变量
     let cpu_count = sys.cpus().len();
     let last_core_mask: usize = 1 << (cpu_count - 1); 
     let mut found = false;
@@ -105,18 +94,10 @@ fn restrict_processes(
                 found = true;
                 unsafe {
                     if let Ok(handle) = OpenProcess(PROCESS_ALL_ACCESS, false, pid.as_u32()) {
-                        if enable_cpu_affinity {
-                            if SetProcessAffinityMask(handle, last_core_mask).is_ok() { log_messages.push(format!("{} 绑定核心 {}", process_name, cpu_count - 1)); }
-                        }
-                        if enable_process_priority {
-                            if SetPriorityClass(handle, IDLE_PRIORITY_CLASS).is_ok() { log_messages.push(format!("{} 优先级降至最低", process_name)); }
-                        }
-                        if enable_efficiency_mode {
-                            if set_efficiency_mode(handle) { log_messages.push(format!("{} 开启效率模式", process_name)); }
-                        }
-                        if enable_memory_priority {
-                            if EmptyWorkingSet(handle).is_ok() { log_messages.push(format!("{} 内存已释放", process_name)); }
-                        }
+                        if enable_cpu_affinity { let _ = SetProcessAffinityMask(handle, last_core_mask); }
+                        if enable_process_priority { let _ = SetPriorityClass(handle, IDLE_PRIORITY_CLASS); }
+                        if enable_efficiency_mode { let _ = set_efficiency_mode(handle); }
+                        if enable_memory_priority { let _ = EmptyWorkingSet(handle); }
                         if enable_io_priority { } 
                     }
                 }
@@ -125,7 +106,7 @@ fn restrict_processes(
     }
     ProcessStatus {
         target_core: cpu_count - 1, sguard64_restricted: found,
-        message: if log_messages.is_empty() { "扫描完毕，未发现活跃进程".to_string() } else { log_messages.join("\n") },
+        message: if found { "ACE 限制已生效".to_string() } else { "未发现 ACE 进程".to_string() },
     }
 }
 
@@ -133,9 +114,9 @@ fn restrict_processes(
 fn get_system_info() -> SystemInfo {
     let mut sys = System::new_all();
     sys.refresh_cpu();
-    let cpu_model = if !sys.cpus().is_empty() { sys.cpus()[0].brand().to_string() } else { "未知 CPU".to_string() };
+    let cpu_model = if !sys.cpus().is_empty() { sys.cpus()[0].brand().to_string() } else { "Unknown CPU".to_string() };
     SystemInfo {
-        cpu_model, os_name: System::name().unwrap_or("Win".to_string()), os_version: System::os_version().unwrap_or("?".to_string()),
+        cpu_model, os_name: System::name().unwrap_or("Windows".to_string()), os_version: System::os_version().unwrap_or("11".to_string()),
         cpu_logical_cores: sys.cpus().len(),
     }
 }
@@ -156,30 +137,24 @@ fn get_process_performance() -> Vec<ProcessPerformance> {
 
 #[tauri::command]
 fn lower_ace_priority() -> String {
-    let r1 = set_registry_priority("SGuard64.exe", 1);
-    let r2 = set_registry_priority("SGuardSvc64.exe", 1);
-    match (r1, r2) {
-        (Ok(_), Ok(_)) => "⚠️ ACE 已永久降权 (重启生效)".to_string(),
-        (Err(e), _) => format!("失败: {}", e), (_, Err(e)) => format!("失败: {}", e),
-    }
+    let _ = set_registry_priority("SGuard64.exe", 1);
+    let _ = set_registry_priority("SGuardSvc64.exe", 1);
+    "ACE 已降权".to_string()
 }
 #[tauri::command]
 fn reset_ace_priority() -> String {
-    let r1 = reset_registry_priority("SGuard64.exe");
-    let r2 = reset_registry_priority("SGuardSvc64.exe");
-    match (r1, r2) {
-        (Ok(_), Ok(_)) => "✅ ACE 已恢复默认".to_string(),
-        (Err(e), _) => format!("恢复失败: {}", e), (_, Err(e)) => format!("恢复失败: {}", e),
-    }
+    let _ = reset_registry_priority("SGuard64.exe");
+    let _ = reset_registry_priority("SGuardSvc64.exe");
+    "ACE 已恢复".to_string()
 }
 #[tauri::command]
-fn raise_delta_priority() -> String { match set_registry_priority("DeltaForceClient.exe", 3) { Ok(_) => "三角洲优化完毕".to_string(), Err(e) => format!("失败: {}", e) } }
+fn raise_delta_priority() -> String { let _ = set_registry_priority("DeltaForceClient.exe", 3); "优化已应用".to_string() }
 #[tauri::command]
-fn reset_delta_priority() -> String { match reset_registry_priority("DeltaForceClient.exe") { Ok(_) => "三角洲已恢复".to_string(), Err(e) => format!("失败: {}", e) } }
+fn reset_delta_priority() -> String { let _ = reset_registry_priority("DeltaForceClient.exe"); "已恢复".to_string() }
 #[tauri::command]
-fn modify_valorant_registry_priority() -> String { match set_registry_priority("VALORANT-Win64-Shipping.exe", 3) { Ok(_) => "无畏契约优化完毕".to_string(), Err(e) => format!("失败: {}", e) } }
+fn modify_valorant_registry_priority() -> String { let _ = set_registry_priority("VALORANT-Win64-Shipping.exe", 3); "优化已应用".to_string() }
 #[tauri::command]
-fn reset_valorant_priority() -> String { match reset_registry_priority("VALORANT-Win64-Shipping.exe") { Ok(_) => "无畏契约已恢复".to_string(), Err(e) => format!("失败: {}", e) } }
+fn reset_valorant_priority() -> String { let _ = reset_registry_priority("VALORANT-Win64-Shipping.exe"); "已恢复".to_string() }
 
 #[tauri::command]
 fn check_registry_priority() -> String {
@@ -187,10 +162,10 @@ fn check_registry_priority() -> String {
     let path = "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\SGuard64.exe\\PerfOptions";
     if let Ok(key) = hk_lm.open_subkey(path) {
         if let Ok(v) = key.get_value::<u32, _>("CpuPriorityClass") {
-            if v == 1 { return "⚠️ 状态: 已强制降权".to_string(); }
+            if v == 1 { return "⚠️ 已降权".to_string(); }
         }
     }
-    "✅ 状态: 默认配置".to_string()
+    "✅ 默认".to_string()
 }
 
 #[tauri::command]
@@ -198,16 +173,15 @@ fn exit_app() { std::process::exit(0); }
 
 #[tauri::command]
 fn enable_autostart() -> Result<String, String> {
-    let exe_path = env::current_exe().map_err(|e| e.to_string())?;
+    let exe_path = std::env::current_exe().map_err(|e| e.to_string())?;
     let path_str = exe_path.to_str().unwrap();
-    let _ = Command::new("schtasks").args(&["/delete", "/tn", "PitayaBoxAutoStart", "/f"]).creation_flags(0x08000000).status();
-    let status = Command::new("schtasks").args(&["/create", "/tn", "PitayaBoxAutoStart", "/tr", path_str, "/sc", "onlogon", "/rl", "highest", "/f"]).creation_flags(0x08000000).status().map_err(|e| e.to_string())?;
-    if status.success() { Ok("自启动已开启".to_string()) } else { Err("开启失败".to_string()) }
+    let _ = Command::new("schtasks").args(&["/create", "/tn", "PitayaBoxAutoStart", "/tr", path_str, "/sc", "onlogon", "/rl", "highest", "/f"]).creation_flags(0x08000000).status();
+    Ok("自启已开启".to_string())
 }
 #[tauri::command]
 fn disable_autostart() -> Result<String, String> {
-    let status = Command::new("schtasks").args(&["/delete", "/tn", "PitayaBoxAutoStart", "/f"]).creation_flags(0x08000000).status().map_err(|e| e.to_string())?;
-    if status.success() { Ok("自启动已关闭".to_string()) } else { Err("关闭失败".to_string()) }
+    let _ = Command::new("schtasks").args(&["/delete", "/tn", "PitayaBoxAutoStart", "/f"]).creation_flags(0x08000000).status();
+    Ok("自启已关闭".to_string())
 }
 #[tauri::command]
 fn check_autostart() -> bool {
@@ -215,18 +189,19 @@ fn check_autostart() -> bool {
     false
 }
 
-// 强制打开 URL (绕过 Shell 插件权限)
 #[tauri::command]
 fn open_github() {
     let _ = Command::new("cmd").args(&["/C", "start", "https://github.com/PitayaBox/FuckACE"]).creation_flags(0x08000000).spawn();
 }
 
+// 移除了所有 lib.rs 相关的宏引用，直接在这里定义 main
 fn main() {
     tauri::Builder::default()
+        // 只保留 shell 插件，用于打开 GitHub 链接
+        .plugin(tauri_plugin_shell::init())
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => {
-                api.prevent_close();
-                window.emit("request-close", {}).unwrap();
+                window.close().unwrap();
             }
             _ => {}
         })

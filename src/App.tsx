@@ -1,14 +1,13 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useInitialData } from './hooks/useOptimizedSupabase';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
-import { open } from '@tauri-apps/plugin-shell';
 import {
   Paper, Typography, Button, Box, Chip, Divider, ThemeProvider, createTheme, CssBaseline, Avatar, Switch,
   FormControlLabel, IconButton, useMediaQuery, GlobalStyles, Dialog, DialogTitle,
-  DialogContent, DialogContentText, DialogActions, TextField, Tooltip, styled, SwitchProps
+  DialogContent, DialogContentText, DialogActions, TextField, Tooltip, styled, SwitchProps, useTheme
 } from '@mui/material';
+// 引入图标 (已移除无用的窗口控制图标)
 import {
   PlayArrow as StartIcon, DarkMode as DarkModeIcon, LightMode as LightModeIcon,
   Tune as ActiveIcon, Terminal as TerminalIcon,
@@ -16,25 +15,33 @@ import {
   InfoOutlined as InfoIcon,
   SportsEsports as GameIcon, Shield as ShieldIcon,
   GitHub as GitHubIcon, PowerSettingsNew as QuitIcon,
-  Memory as MemoryIcon
+  Memory as MemoryIcon, Speed as SpeedIcon,
+  Storage as StorageIcon, Bolt as BoltIcon
 } from '@mui/icons-material';
 
-// --- Clash 风格 Switch ---
-const ClashSwitch = styled((props: SwitchProps) => (
+// --- 辅助函数 ---
+const getSavedState = (key: string, defaultValue: boolean) => {
+  const saved = localStorage.getItem(key);
+  return saved !== null ? saved === 'true' : defaultValue;
+};
+
+// --- 图一风格 Switch ---
+const Figure1Switch = styled((props: SwitchProps) => (
   <Switch focusVisibleClassName=".Mui-focusVisible" disableRipple {...props} />
 ))(({ theme }) => ({
-  width: 44, height: 24, padding: 0,
+  width: 48, height: 26, padding: 0,
   '& .MuiSwitch-switchBase': {
     padding: 0, margin: 2, transitionDuration: '300ms',
     '&.Mui-checked': {
-      transform: 'translateX(20px)', color: '#fff',
-      '& + .MuiSwitch-track': { backgroundColor: '#409eff', opacity: 1, border: 0 },
+      transform: 'translateX(22px)', color: '#fff',
+      '& + .MuiSwitch-track': { backgroundColor: '#3b82f6', opacity: 1, border: 0 },
     },
     '&.Mui-focusVisible .MuiSwitch-thumb': { color: '#33cf4d', border: '6px solid #fff' },
   },
-  '& .MuiSwitch-thumb': { boxSizing: 'border-box', width: 20, height: 20 },
+  '& .MuiSwitch-thumb': { boxSizing: 'border-box', width: 22, height: 22 },
   '& .MuiSwitch-track': {
-    borderRadius: 12, backgroundColor: theme.palette.mode === 'light' ? '#dcdfe6' : '#4c4d4f',
+    borderRadius: 13,
+    backgroundColor: theme.palette.mode === 'dark' ? '#4b5563' : '#d1d5db',
     opacity: 1, transition: theme.transitions.create(['background-color'], { duration: 500 }),
   },
 }));
@@ -50,7 +57,7 @@ function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
-  const [darkMode, setDarkMode] = useState(true); // 默认深色
+  const [darkMode, setDarkMode] = useState(true); 
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const [performance, setPerformance] = useState<ProcessPerformance[]>([]);
@@ -59,38 +66,39 @@ function App() {
   const [disclaimerInput, setDisclaimerInput] = useState('');
   const [showExitDialog, setShowExitDialog] = useState(false);
 
-  // 开关状态
-  const [enableCpuAffinity, setEnableCpuAffinity] = useState(true);
-  const [enableProcessPriority, setEnableProcessPriority] = useState(true);
-  const [enableEfficiencyMode, setEnableEfficiencyMode] = useState(false);
-  const [enableIoPriority, setEnableIoPriority] = useState(false);
-  const [enableMemoryPriority, setEnableMemoryPriority] = useState(false);
-  const [enableAutoLimit, setEnableAutoLimit] = useState(false);
+  const [enableCpuAffinity, setEnableCpuAffinity] = useState(() => getSavedState('sw_cpu', true));
+  const [enableProcessPriority, setEnableProcessPriority] = useState(() => getSavedState('sw_priority', true));
+  const [enableEfficiencyMode, setEnableEfficiencyMode] = useState(() => getSavedState('sw_efficiency', false));
+  const [enableIoPriority, setEnableIoPriority] = useState(() => getSavedState('sw_io', false));
+  const [enableMemoryPriority, setEnableMemoryPriority] = useState(() => getSavedState('sw_mem', false));
+  const [enableAutoLimit, setEnableAutoLimit] = useState(() => getSavedState('sw_auto_loop', false));
   const [autoStartEnabled, setAutoStartEnabled] = useState(false);
 
-  // Clash Verge 风格主题
+  useEffect(() => { localStorage.setItem('sw_cpu', String(enableCpuAffinity)); }, [enableCpuAffinity]);
+  useEffect(() => { localStorage.setItem('sw_priority', String(enableProcessPriority)); }, [enableProcessPriority]);
+  useEffect(() => { localStorage.setItem('sw_efficiency', String(enableEfficiencyMode)); }, [enableEfficiencyMode]);
+  useEffect(() => { localStorage.setItem('sw_io', String(enableIoPriority)); }, [enableIoPriority]);
+  useEffect(() => { localStorage.setItem('sw_mem', String(enableMemoryPriority)); }, [enableMemoryPriority]);
+  useEffect(() => { localStorage.setItem('sw_auto_loop', String(enableAutoLimit)); }, [enableAutoLimit]);
+
   const theme = useMemo(() => createTheme({
     palette: {
       mode: darkMode ? 'dark' : 'light',
       primary: { main: '#409eff' },
       secondary: { main: '#67c23a' },
       error: { main: '#f56c6c' },
-      background: { 
-        default: darkMode ? '#1b1d23' : '#f0f2f5', 
-        paper: darkMode ? '#252a34' : '#ffffff' 
-      },
-      text: { 
-        primary: darkMode ? '#ffffff' : '#303133', 
-        secondary: darkMode ? '#a1a1aa' : '#57606a' 
-      }
+      background: { default: darkMode ? '#1b1d23' : '#f0f2f5', paper: darkMode ? '#252a34' : '#ffffff' },
+      text: { primary: darkMode ? '#ffffff' : '#303133', secondary: darkMode ? '#a1a1aa' : '#606266' }
     },
     shape: { borderRadius: 12 },
     typography: { fontFamily: '"Segoe UI", "Microsoft YaHei", sans-serif', fontSize: 13 },
     components: {
-      MuiPaper: { styleOverrides: { root: { backgroundImage: 'none', boxShadow: darkMode ? '0 4px 12px rgba(0,0,0,0.2)' : '0 2px 10px rgba(0,0,0,0.05)' } } },
+      MuiPaper: { styleOverrides: { root: { backgroundImage: 'none', boxShadow: darkMode ? '0 4px 12px rgba(0,0,0,0.2)' : '0 2px 10px rgba(0,0,0,0.05)', border: darkMode ? '1px solid #363b40' : '1px solid #ebeef5' } } },
       MuiButton: { styleOverrides: { root: { textTransform: 'none', fontWeight: 600, boxShadow: 'none' } } },
-      MuiTooltip: { styleOverrides: { tooltip: { backgroundColor: '#303133', fontSize: '0.75rem', padding: '8px 12px' }, arrow: { color: '#303133' } } },
-      MuiDialog: { styleOverrides: { paper: { backgroundColor: darkMode ? '#252a34' : '#fff' } } }
+      MuiTooltip: { styleOverrides: { tooltip: { backgroundColor: darkMode ? '#303133' : '#fff', color: darkMode ? '#fff' : '#333', border: '1px solid', borderColor: darkMode ? '#444' : '#eee', fontSize: '0.75rem', padding: '8px 12px', maxWidth: 300 }, arrow: { color: darkMode ? '#303133' : '#fff' } } },
+      MuiDialog: { styleOverrides: { paper: { backgroundColor: darkMode ? '#252a34' : '#fff' } } },
+      MuiIconButton: { styleOverrides: { root: { borderRadius: 4, padding: 6 } } },
+      MuiOutlinedInput: { styleOverrides: { root: { '& .MuiOutlinedInput-notchedOutline': { borderColor: darkMode ? 'rgba(255, 255, 255, 0.23)' : 'rgba(0, 0, 0, 0.23)' } } } }
     }
   }), [darkMode]);
 
@@ -129,53 +137,68 @@ function App() {
   };
 
   useEffect(() => {
-    const hasAgreed = localStorage.getItem('pitayabox_disclaimer_agreed_v11'); 
+    const hasAgreed = localStorage.getItem('pitayabox_disclaimer_agreed_v18'); 
     if (hasAgreed !== 'true') setShowDisclaimer(true);
-    const unlistenPromise = listen('request-close', () => setShowExitDialog(true));
+    // 改回只监听关闭，不再需要处理双标题栏的逻辑
+    const unlistenPromise = listen('tauri://close-requested', () => setShowExitDialog(true));
     addLog('核心服务已就绪');
     invoke<SystemInfo>('get_system_info').then(info => {
         setSystemInfo(info);
         if (info.cpu_logical_cores > 0) setTargetCore(info.cpu_logical_cores - 1);
     });
     invoke<boolean>('check_autostart').then(setAutoStartEnabled);
-    
     const interval = setInterval(async () => {
       setPerformance(await invoke<ProcessPerformance[]>('get_process_performance'));
       if (enableAutoLimit) executeRestriction(true);
     }, 30000); 
-    
     return () => { unlistenPromise.then(f => f()); clearInterval(interval); };
   }, [addLog, enableAutoLimit, executeRestriction]);
 
   useEffect(() => { if (logContainerRef.current) logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight; }, [logs]);
-  useInitialData(); 
 
   const handleDisclaimerAgree = () => {
     if (disclaimerInput === '我已知晓风险并自愿承担后果') {
-      localStorage.setItem('pitayabox_disclaimer_agreed_v11', 'true');
+      localStorage.setItem('pitayabox_disclaimer_agreed_v18', 'true');
       setShowDisclaimer(false);
     }
   };
 
-  // --- Tooltips ---
-  const CoreRiskTooltip = (
-    <Box>
-      <Typography variant="subtitle2" fontWeight="bold" color="#67c23a" gutterBottom>功能详解</Typography>
-      <Box mb={0.5}>● <strong>CPU 亲和性 (推荐)</strong>: 风险极低。防止 ACE 抢占游戏核心。</Box>
-      <Box mb={0.5}>● <strong>效率模式 (推荐)</strong>: 风险低。Win11 节能特性，降低资源占用。</Box>
-      <Box mb={0.5}>● <strong>优先级压制 (推荐)</strong>: 风险中。极端情况可能被踢出游戏。</Box>
-      <Box>● <strong>I/O与内存 (可选)</strong>: 风险中。高配电脑建议关闭。</Box>
+  // Tooltips
+  const CoreRiskTooltipContent = (
+    <Box sx={{ p: 0.5 }}>
+      <Typography variant="subtitle2" fontWeight="bold" color="secondary.main" gutterBottom>
+        详细风险评估与推荐配置
+      </Typography>
+      <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.75rem', color: 'inherit' }}>
+        <li><strong>CPU 亲和性 (强烈推荐)</strong>: <span style={{color:'#67c23a'}}>极低风险</span>。将反作弊绑定到单一核心，防止其频繁抢占游戏资源。</li>
+        <li><strong>进程优先级 (推荐)</strong>: <span style={{color:'#67c23a'}}>低风险</span>。将反作弊设为“空闲”级别。</li>
+        <li><strong>效率模式 (推荐)</strong>: <span style={{color:'#67c23a'}}>低风险</span>。利用 Win11 原生 API 降低能耗。</li>
+        <li><strong>I/O 读写降权 (可选)</strong>: <span style={{color:'#e6a23c'}}>中风险</span>。限制硬盘读写速度。</li>
+        <li><strong>内存驻留降权 (可选)</strong>: <span style={{color:'#e6a23c'}}>中风险</span>。强制释放内存。</li>
+      </ul>
     </Box>
   );
 
-  const GameOptTooltip = (
-    <Box>
-      <Typography variant="subtitle2" fontWeight="bold" color="#409eff" gutterBottom>优化原理</Typography>
-      <Typography variant="caption" display="block">通过注册表强制 Windows 以<strong>“高优先级”</strong>启动游戏，减少掉帧与卡顿。</Typography>
+  const GameOptTooltipContent = (
+    <Box sx={{ p: 0.5 }}>
+       <Typography variant="subtitle2" fontWeight="bold" color="primary.main" gutterBottom>
+        注册表优化原理说明
+      </Typography>
+      <Typography variant="caption" display="block">
+        通过修改 Windows 注册表 IFEO 项，给予游戏更高 CPU 权重。
+      </Typography>
+      <Typography variant="caption" display="block" sx={{ mt: 1, fontWeight: 'bold' }}>
+        安全说明：
+      </Typography>
+      <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.7rem', color: 'inherit', opacity: 0.9 }}>
+        <li>不修改游戏文件。</li>
+        <li>利用 Windows 系统原生功能。</li>
+        <li>通常安全，极低概率被反作弊误判。</li>
+      </ul>
     </Box>
   );
 
-  // --- UI 组件 ---
+  // UI 组件
   const ClashCard = ({ children, title, icon, action, danger = false, color="default" }: any) => (
     <Paper sx={{ p: 0, height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'background.paper', position: 'relative', overflow: 'hidden' }}>
       <Box sx={{ height: 3, width: '100%', bgcolor: danger ? '#f56c6c' : (color === 'blue' ? '#409eff' : (color === 'green' ? '#67c23a' : 'transparent')) }} />
@@ -189,13 +212,40 @@ function App() {
     </Paper>
   );
 
-  const SettingRow = ({ checked, onChange, label, desc }: any) => (
-    <Box display="flex" justifyContent="space-between" alignItems="center" py={1.2} borderBottom={darkMode ? '1px solid #363b40' : '1px solid #f0f0f0'}>
-      <Box>
-        <Typography variant="body2" fontWeight="bold" fontSize="0.9rem">{label}</Typography>
-        <Typography variant="caption" color="text.secondary" fontSize="0.75rem">{desc}</Typography>
+  const CoreCard = ({ children }: any) => {
+    const theme = useTheme();
+    return (
+    <Paper sx={{ 
+      p: 0, height: '100%', display: 'flex', flexDirection: 'column', 
+      bgcolor: 'background.paper',
+      border: 1, borderColor: 'divider',
+      position: 'relative', overflow: 'hidden',
+      boxShadow: theme.shadows[2]
+    }}>
+      <Box p={2.5} pb={0} display="flex" justifyContent="space-between" alignItems="center">
+        <Box display="flex" alignItems="center" gap={1.2} color="text.primary">
+          <ActiveIcon /> <Typography variant="h6" fontWeight="bold" fontSize="0.95rem">核心主动限制</Typography>
+        </Box>
+        <Tooltip title={CoreRiskTooltipContent} arrow placement="right-start">
+            <IconButton size="small" sx={{color:'text.secondary', cursor: 'help'}}>
+                <InfoIcon fontSize="small" />
+            </IconButton>
+        </Tooltip>
       </Box>
-      <ClashSwitch checked={checked} onChange={onChange} />
+      <Box p={2.5} pt={1}>{children}</Box>
+    </Paper>
+  )};
+
+  const CoreSettingRow = ({ checked, onChange, label, desc, icon }: any) => (
+    <Box display="flex" justifyContent="space-between" alignItems="center" py={1.8} borderBottom={1} borderColor="divider">
+      <Box display="flex" gap={2} alignItems="center">
+         <Box color="primary.main">{icon}</Box>
+         <Box>
+            <Typography variant="body2" fontWeight="bold" fontSize="0.95rem" color="text.primary">{label}</Typography>
+            <Typography variant="caption" color="text.secondary" fontSize="0.75rem">{desc}</Typography>
+         </Box>
+      </Box>
+      <Figure1Switch checked={checked} onChange={onChange} />
     </Box>
   );
 
@@ -204,35 +254,21 @@ function App() {
       <CssBaseline />
       <GlobalStyles styles={{ '*::-webkit-scrollbar': { width: '4px' }, '*::-webkit-scrollbar-thumb': { backgroundColor: darkMode ? '#4c4d4f' : '#ccc', borderRadius: '2px' } }} />
 
-      {/* 免责声明 */}
       <Dialog open={showDisclaimer} disableEscapeKeyDown fullWidth maxWidth="sm">
         <DialogTitle sx={{ textAlign: 'center', pt: 3 }}><Typography variant="h5" fontWeight="bold">风险告知</Typography></DialogTitle>
         <DialogContent sx={{ px: 4 }}>
-          <Box sx={{ bgcolor: darkMode ? '#1e1e2e' : '#f5f5f7', p: 2, borderRadius: 2, mb: 3, border: `1px solid ${darkMode?'#333':'#e0e0e0'}` }}>
-            <DialogContentText sx={{ textAlign: 'justify', fontSize: '0.9rem', lineHeight: 1.6 }}>
-              1. <strong>PitayaBox</strong> 仅供技术研究使用，开发者不承担任何责任。<br/>
-              2. 修改注册表及干预系统进程属于高风险操作，可能导致账号封禁。<br/>
-              3. 请确认您完全理解风险。
+          <Box sx={{ bgcolor: 'background.default', p: 2, borderRadius: 2, mb: 3, border: 1, borderColor: 'divider' }}>
+            <DialogContentText sx={{ textAlign: 'justify', fontSize: '0.9rem', lineHeight: 1.6, color: 'text.primary' }}>
+              1. <strong>PitayaBox</strong> 仅供技术研究使用，开发者不承担任何责任。<br/>2. 您的操作可能存在风险。<br/>3. 请确认您完全理解。
             </DialogContentText>
           </Box>
           <Box>
-             {/* 修复点：将 color="primary" (蓝色) 改为 color="error" (红色) 
-                以匹配下方的输入提示
-             */}
              <Typography variant="caption" color="error" sx={{ display: 'block', mb: 1, fontWeight: 'bold', textAlign: 'center', fontSize: '1rem' }}>
                 请严格输入：我已知晓风险并自愿承担后果
              </Typography>
              <TextField 
-                variant="outlined" 
-                placeholder="在此输入上方红色文字..."
-                value={disclaimerInput} 
-                onChange={(e) => setDisclaimerInput(e.target.value)} 
-                fullWidth size="small"
-                sx={{ 
-                   input: { color: darkMode ? '#fff' : '#000', textAlign: 'center', fontWeight: 'bold' }, 
-                   bgcolor: darkMode ? '#252a34' : '#fff',
-                   fieldset: { borderColor: darkMode ? '#444' : '#ccc' }
-                }}
+                variant="outlined" placeholder="在此输入上方红色文字..." value={disclaimerInput} onChange={(e) => setDisclaimerInput(e.target.value)} fullWidth size="small"
+                sx={{ input: { textAlign: 'center', fontWeight: 'bold' }, bgcolor: 'background.paper' }}
             />
           </Box>
         </DialogContent>
@@ -242,12 +278,11 @@ function App() {
         </DialogActions>
       </Dialog>
 
-      {/* 退出弹窗 */}
       <Dialog open={showExitDialog} onClose={() => setShowExitDialog(false)}>
         <DialogTitle sx={{ textAlign: 'center' }}>关闭程序</DialogTitle>
-        <DialogContent><DialogContentText sx={{ textAlign: 'center' }}>保持后台运行可确保持续压制 ACE 进程。</DialogContentText></DialogContent>
+        <DialogContent><DialogContentText sx={{ textAlign: 'center' }}>是否确认退出 PitayaBox？</DialogContentText></DialogContent>
         <DialogActions sx={{ p: 3, justifyContent: 'center', gap: 2 }}>
-          <Button variant="contained" onClick={() => { getCurrentWindow().minimize(); setShowExitDialog(false); }}>最小化 (推荐)</Button>
+          <Button variant="contained" onClick={() => setShowExitDialog(false)}>取消</Button>
           <Button color="error" onClick={() => invoke('exit_app')}>彻底退出</Button>
         </DialogActions>
       </Dialog>
@@ -255,145 +290,113 @@ function App() {
       <Box sx={{ height: '100vh', display: 'flex', overflow: 'hidden', bgcolor: 'background.default', color: 'text.primary' }}>
         
         {/* 左侧侧边栏 */}
-        <Box sx={{ width: 260, display: 'flex', flexDirection: 'column', bgcolor: darkMode ? '#1b1d23' : '#f0f2f5', borderRight: `1px solid ${darkMode?'#1e1e2e':'#e0e0e0'}` }}>
+        <Box sx={{ width: 260, display: 'flex', flexDirection: 'column', bgcolor: 'background.paper', borderRight: 1, borderColor: 'divider' }}>
           
-          <Box p={3} pb={1} display="flex" alignItems="center" gap={2}>
-            <Avatar src="/logo.png" variant="rounded" sx={{ width: 36, height: 36, borderRadius: '8px' }} />
-            <Box>
-                <Typography variant="h6" fontWeight="bold" lineHeight={1.1} fontSize="1.1rem">PitayaBox</Typography>
-                <Typography variant="caption" color="text.secondary">v0.5.3</Typography>
-            </Box>
+          <Box p={3} pb={2} display="flex" flexDirection="column" justifyContent="center" alignItems="center">
+              <Avatar src="/logo.png" variant="rounded" sx={{ width: 200, height: 90, mb: 1.5 }} />
+              <Typography variant="h6" fontWeight="bold" sx={{ fontSize: '1rem', letterSpacing: 1, color: 'text.primary' }}>
+                  PitayaBox
+              </Typography>
           </Box>
 
           <Box px={3} py={2}>
-             <Typography variant="caption" fontWeight="bold" color="text.secondary" mb={1} display="block">概览</Typography>
-             <Box p={2} borderRadius={2} bgcolor={darkMode ? '#252a34' : '#ffffff'} mb={2} border={`1px solid ${darkMode?'#363b40':'#eee'}`}>
-                 <Box display="flex" alignItems="center" gap={1} mb={0.5}>
-                    <MemoryIcon fontSize="small" color="primary"/>
-                    <Typography variant="caption" color="text.secondary">目标核心</Typography>
-                 </Box>
-                 <Typography variant="h4" fontWeight="bold" color="primary.main">#{targetCore !== null ? targetCore : '-'}</Typography>
-                 <Divider sx={{ my: 1.5 }} />
-                 <Box display="flex" justifyContent="space-between" alignItems="center">
-                    <Typography variant="caption" color="text.secondary">防护状态</Typography>
-                    <Chip size="small" label={processStatus?.sguard64_restricted ? "ACTIVE" : "READY"} 
-                          sx={{ height: 20, fontSize: '0.65rem', fontWeight: 'bold', bgcolor: processStatus?.sguard64_restricted ? '#67c23a' : '#909399', color: '#fff' }} />
-                 </Box>
-             </Box>
+              <Typography variant="caption" fontWeight="bold" color="text.secondary" mb={1} display="block">概览</Typography>
+              <Box p={2} borderRadius={2} bgcolor="background.default" mb={2} border={1} borderColor="divider">
+                  <Box display="flex" alignItems="center" gap={1} mb={0.5}><MemoryIcon fontSize="small" color="primary"/><Typography variant="caption" color="text.secondary">目标核心</Typography></Box>
+                  <Typography variant="h4" fontWeight="bold" color="primary.main">#{targetCore !== null ? targetCore : '-'}</Typography>
+              </Box>
           </Box>
 
           <Box flex={1} overflow="auto" px={3}>
-             <Typography variant="caption" fontWeight="bold" color="text.secondary" mb={1} display="block">进程雷达</Typography>
-             {performance.map(p => (
-               <Box key={p.pid} mb={1} p={1} borderRadius={1} bgcolor={darkMode ? '#252a34' : '#ffffff'} display="flex" justifyContent="space-between" alignItems="center" border={`1px solid ${darkMode?'#363b40':'#eee'}`}>
-                 <Box>
-                    <Typography variant="body2" fontSize="0.8rem" fontWeight="bold">{p.name}</Typography>
-                    <Typography variant="caption" color="text.secondary">PID: {p.pid}</Typography>
-                 </Box>
-                 <Chip label={`${p.cpu_usage.toFixed(0)}%`} size="small" sx={{ height: 18, fontSize: '0.7rem', bgcolor: p.cpu_usage > 5 ? '#f56c6c' : '#67c23a', color: '#fff' }} />
-               </Box>
-             ))}
-          </Box>
-
-          {/* 底部终端 - 修复配色：亮色模式下使用浅色背景+深色文字 */}
-          <Box p={2} 
-               bgcolor="#1e1e2e" 
-               color="#fff" 
-               height={160} 
-               sx={{ fontFamily: 'Consolas, monospace', fontSize: '0.75rem', overflowY: 'auto', borderTop: '1px solid #333' }} 
-               ref={logContainerRef}>
-              <Box display="flex" alignItems="center" gap={1} mb={1} position="sticky" top={0} bgcolor="#1e1e2e">
-                  <TerminalIcon sx={{ fontSize: 12, color: '#409eff' }} /> <span style={{color:'#aaa', fontWeight:'bold'}}>运行日志</span>
+              <Typography variant="caption" fontWeight="bold" color="text.secondary" mb={1} display="block">进程雷达</Typography>
+              {performance.map(p => (
+              <Box key={p.pid} mb={1} p={1} borderRadius={1} bgcolor="background.default" display="flex" justifyContent="space-between" alignItems="center" border={1} borderColor="divider">
+                  <Box><Typography variant="body2" fontSize="0.8rem" fontWeight="bold" color="text.primary">{p.name}</Typography></Box>
+                  <Chip label={`${p.cpu_usage.toFixed(0)}%`} size="small" sx={{ height: 18, fontSize: '0.7rem', bgcolor: p.cpu_usage > 5 ? '#f56c6c' : '#67c23a', color: '#fff' }} />
               </Box>
-              {logs.map(log => (
-                  <div key={log.id} style={{ marginBottom: 2, display: 'flex', color: log.message.includes('失败')?'#f56c6c':'#ccc' }}>
-                      <span style={{ opacity: 0.5, marginRight: 8, minWidth: 50 }}>{log.timestamp.split(' ')[0]}</span>
-                      <span>{log.message}</span>
-                  </div>
               ))}
           </Box>
 
-          <Box p={1.5} borderTop={`1px solid ${darkMode?'#2b2b2b':'#e0e0e0'}`} display="flex" justifyContent="space-between" alignItems="center" bgcolor={darkMode ? '#252a34' : '#ffffff'}>
-             <Box display="flex" gap={1}>
-                <Tooltip title="切换模式" arrow><IconButton size="small" onClick={() => setDarkMode(!darkMode)}>{darkMode ? <LightModeIcon fontSize="small"/> : <DarkModeIcon fontSize="small"/>}</IconButton></Tooltip>
-                <Tooltip title="访问 GitHub" arrow><IconButton size="small" onClick={openGitHub}><GitHubIcon fontSize="small"/></IconButton></Tooltip>
-             </Box>
-             <IconButton size="small" color="error" onClick={() => invoke('exit_app')}><QuitIcon fontSize="small"/></IconButton>
+          <Box p={2} bgcolor={darkMode ? '#1e1e2e' : '#e0e4e8'} color="text.primary" height={160} sx={{ fontFamily: 'Consolas, monospace', fontSize: '0.75rem', overflowY: 'auto', borderTop: 1, borderColor: 'divider' }} ref={logContainerRef}>
+              <Box display="flex" alignItems="center" gap={1} mb={1} position="sticky" top={0} bgcolor={darkMode ? '#1e1e2e' : '#e0e4e8'}>
+                  <TerminalIcon sx={{ fontSize: 12, color: 'primary.main' }} /> <span style={{color: darkMode ? '#aaa' : '#666', fontWeight:'bold'}}>运行日志</span>
+              </Box>
+              {logs.map(log => (<div key={log.id} style={{ marginBottom: 2, display: 'flex', color: log.message.includes('失败')?'#f56c6c': (darkMode ? '#ccc' : '#333') }}><span style={{ opacity: 0.5, marginRight: 8, minWidth: 50 }}>{log.timestamp.split(' ')[0]}</span><span>{log.message}</span></div>))}
+          </Box>
+
+          <Box p={1.5} borderTop={1} borderColor="divider" display="flex" justifyContent="flex-start" alignItems="center" bgcolor="background.paper" gap={1}>
+              <Tooltip title="切换模式" arrow><IconButton size="small" onClick={() => setDarkMode(!darkMode)} sx={{color:'text.secondary'}}>{darkMode ? <LightModeIcon fontSize="small"/> : <DarkModeIcon fontSize="small"/>}</IconButton></Tooltip>
+              <Tooltip title="访问 GitHub" arrow><IconButton size="small" onClick={openGitHub} sx={{color:'text.secondary'}}><GitHubIcon fontSize="small"/></IconButton></Tooltip>
           </Box>
         </Box>
 
         {/* 右侧内容区 */}
         <Box flex={1} p={3} overflow="auto" display="flex" flexDirection="column" gap={3} bgcolor="background.default">
-          
           <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Typography variant="h5" fontWeight="bold">控制面板</Typography>
-            <Button variant="contained" startIcon={<StartIcon />} onClick={() => executeRestriction(false)} disabled={loading} sx={{ px: 3, py:0.8, borderRadius: 2, background: 'linear-gradient(90deg, #409eff 0%, #3a8ee6 100%)', boxShadow: '0 4px 12px rgba(64,158,255,0.3)' }}>一键优化</Button>
+              <Typography variant="h5" fontWeight="bold" color="text.primary">控制面板</Typography>
+              <Box display="flex" flexDirection="column" alignItems="flex-end">
+              <Button variant="contained" startIcon={<StartIcon />} onClick={() => executeRestriction(false)} disabled={loading} sx={{ px: 3, py:0.8, borderRadius: 2, background: 'linear-gradient(90deg, #409eff 0%, #3a8ee6 100%)', boxShadow: '0 4px 12px rgba(64,158,255,0.3)' }}>一键优化</Button>
+              <Typography variant="caption" color="text.secondary" sx={{mt:0.5, fontSize:'0.75rem', fontWeight:'bold', color: 'error.main'}}>
+                  请在进入游戏大厅后点击 (非永久生效)
+              </Typography>
+              </Box>
           </Box>
 
           <Box display="grid" gridTemplateColumns={{ xs: '1fr', lg: '3fr 2fr' }} gap={3}>
-            
-            <ClashCard title="核心主动限制" icon={<ActiveIcon />} color="blue" action={
-              <Tooltip title={CoreRiskTooltip} arrow placement="left">
-                <IconButton size="small" sx={{color:'text.secondary'}}><InfoIcon fontSize="small" /></IconButton>
-              </Tooltip>
-            }>
-              <Box display="flex" flexDirection="column" gap={0.2}>
-                <SettingRow checked={enableCpuAffinity} onChange={(e:any)=>setEnableCpuAffinity(e.target.checked)} label="CPU 亲和性锁定" desc="推荐 (安全)" />
-                <SettingRow checked={enableEfficiencyMode} onChange={(e:any)=>setEnableEfficiencyMode(e.target.checked)} label="Windows 效率模式" desc="推荐 (安全)" />
-                <SettingRow checked={enableProcessPriority} onChange={(e:any)=>setEnableProcessPriority(e.target.checked)} label="进程优先级压制" desc="推荐 (防抢占)" />
-                <SettingRow checked={enableIoPriority} onChange={(e:any)=>setEnableIoPriority(e.target.checked)} label="I/O 读写降权" desc="可选 (硬盘优化)" />
-                <SettingRow checked={enableMemoryPriority} onChange={(e:any)=>setEnableMemoryPriority(e.target.checked)} label="内存驻留降权" desc="可选 (内存释放)" />
-              </Box>
-              
-              <Box mt={2.5} p={2} bgcolor={darkMode ? '#1b1d23' : '#f5f7fa'} borderRadius={2} display="flex" alignItems="center" justifyContent="space-between">
-                <Box display="flex" flexDirection="column">
-                    <Box display="flex" alignItems="center" gap={1}>
-                        <Typography variant="body2" fontWeight="bold">自动化托管</Typography>
-                        <Chip size="small" label="SERVICE" sx={{height:16, fontSize:9, fontWeight:'bold', bgcolor:'#409eff', color:'#fff'}} />
-                    </Box>
-                    <Typography variant="caption" color="text.secondary" sx={{mt:0.5, fontSize:'0.7rem'}}>
-                       开机以管理员自启 & 每30秒循环扫描
-                    </Typography>
-                </Box>
-                <Box display="flex" gap={2}>
-                   <FormControlLabel control={<ClashSwitch size="small" checked={autoStartEnabled} onChange={toggleAutoStart} />} label={<Typography variant="caption" fontWeight="bold">自启</Typography>} sx={{mr:0}} />
-                   <FormControlLabel control={<ClashSwitch size="small" checked={enableAutoLimit} onChange={(e:any)=>setEnableAutoLimit(e.target.checked)} />} label={<Typography variant="caption" fontWeight="bold">循环</Typography>} sx={{mr:0}} />
-                </Box>
-              </Box>
-            </ClashCard>
+              <CoreCard>
+                  <CoreSettingRow checked={enableCpuAffinity} onChange={(e:any)=>setEnableCpuAffinity(e.target.checked)} label="CPU 亲和性锁定" desc="强制绑定至最后一核" icon={<MemoryIcon/>} />
+                  <CoreSettingRow checked={enableProcessPriority} onChange={(e:any)=>setEnableProcessPriority(e.target.checked)} label="进程优先级压制" desc="设为空闲(Idle)级别" icon={<SpeedIcon/>} />
+                  <CoreSettingRow checked={enableEfficiencyMode} onChange={(e:any)=>setEnableEfficiencyMode(e.target.checked)} label="Windows 效率模式" desc="系统级能耗限制 (EcoQoS)" icon={<BoltIcon/>} />
+                  <CoreSettingRow checked={enableIoPriority} onChange={(e:any)=>setEnableIoPriority(e.target.checked)} label="I/O 读写降权" desc="降低硬盘占用权重" icon={<StorageIcon/>} />
+                  <CoreSettingRow checked={enableMemoryPriority} onChange={(e:any)=>setEnableMemoryPriority(e.target.checked)} label="内存驻留降权" desc="降低RAM分配优先级" icon={<MemoryIcon/>} />
+                  <Box mt={2.5} p={2} bgcolor={darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)"} borderRadius={2} display="flex" alignItems="center" justifyContent="space-between">
+                      <Box display="flex" flexDirection="column">
+                          <Box display="flex" alignItems="center" gap={1}>
+                              <Typography variant="body2" fontWeight="bold" color="text.primary">自动化托管</Typography>
+                              <Chip size="small" label="SERVICE" sx={{height:16, fontSize:9, fontWeight:'bold', bgcolor:'primary.main', color:'#fff'}} />
+                          </Box>
+                          <Typography variant="caption" sx={{color:'text.secondary', fontSize:'0.7rem', mt:0.5}}>开机自启 & 循环扫描</Typography>
+                      </Box>
+                      <Box display="flex" gap={2}>
+                          <FormControlLabel control={<Figure1Switch size="small" checked={autoStartEnabled} onChange={toggleAutoStart} />} label={<Typography variant="caption" fontWeight="bold" color="text.primary">自启</Typography>} sx={{mr:0}} />
+                          <FormControlLabel control={<Figure1Switch size="small" checked={enableAutoLimit} onChange={(e:any)=>setEnableAutoLimit(e.target.checked)} />} label={<Typography variant="caption" fontWeight="bold" color="text.primary">循环</Typography>} sx={{mr:0}} />
+                      </Box>
+                  </Box>
+              </CoreCard>
 
-            <Box display="flex" flexDirection="column" gap={3}>
-              <ClashCard title="游戏专项优化" icon={<GameIcon />} color="green" action={
-                  <Tooltip title={GameOptTooltip} arrow placement="left">
-                    <IconButton size="small" sx={{color:'text.secondary'}}><InfoIcon fontSize="small" /></IconButton>
+              <Box display="flex" flexDirection="column" gap={3}>
+              <ClashCard title="游戏专项优化" icon={<GameIcon />} color="green" 
+                action={
+                  <Tooltip title={GameOptTooltipContent} arrow placement="left">
+                    <IconButton size="small" sx={{color:'text.secondary', cursor: 'help'}}><InfoIcon fontSize="small" /></IconButton>
                   </Tooltip>
-              }>
-                <Box mb={2} mt={1}>
-                  <Box display="flex" justifyContent="space-between" mb={1}><Typography variant="body2" fontWeight="bold">三角洲行动</Typography></Box>
+                }>
+                  <Box mb={2} mt={1}>
+                  <Box display="flex" justifyContent="space-between" mb={1}><Typography variant="body2" fontWeight="bold" color="text.primary">三角洲行动</Typography></Box>
                   <Box display="flex" gap={1}>
-                     <Button variant="contained" fullWidth size="small" color="secondary" onClick={() => runRegistryCommand('raise_delta_priority', '三角洲优化')} sx={{fontSize:'0.8rem', py:0.5}}>优化</Button>
-                     <Button variant="text" color="inherit" size="small" onClick={() => runRegistryCommand('reset_delta_priority', '恢复')} sx={{fontSize:'0.8rem'}}>撤销</Button>
+                      <Button variant="contained" fullWidth size="small" color="secondary" onClick={() => runRegistryCommand('raise_delta_priority', '三角洲优化')} sx={{fontSize:'0.8rem', py:0.5}}>优化</Button>
+                      <Button variant="text" color="inherit" size="small" onClick={() => runRegistryCommand('reset_delta_priority', '恢复')} sx={{fontSize:'0.8rem', color: 'text.secondary'}}>撤销</Button>
                   </Box>
-                </Box>
-                <Divider sx={{ my: 1.5 }} />
-                <Box mb={1}>
-                  <Box display="flex" justifyContent="space-between" mb={1}><Typography variant="body2" fontWeight="bold">无畏契约</Typography></Box>
+                  </Box>
+                  <Divider sx={{ my: 1.5 }} />
+                  <Box mb={1}>
+                  <Box display="flex" justifyContent="space-between" mb={1}><Typography variant="body2" fontWeight="bold" color="text.primary">无畏契约</Typography></Box>
                   <Box display="flex" gap={1}>
-                     <Button variant="contained" fullWidth size="small" color="secondary" onClick={() => runRegistryCommand('modify_valorant_registry_priority', '无畏契约优化')} sx={{fontSize:'0.8rem', py:0.5}}>优化</Button>
-                     <Button variant="text" color="inherit" size="small" onClick={() => runRegistryCommand('reset_valorant_priority', '恢复')} sx={{fontSize:'0.8rem'}}>撤销</Button>
+                      <Button variant="contained" fullWidth size="small" color="secondary" onClick={() => runRegistryCommand('modify_valorant_registry_priority', '无畏契约优化')} sx={{fontSize:'0.8rem', py:0.5}}>优化</Button>
+                      <Button variant="text" color="inherit" size="small" onClick={() => runRegistryCommand('reset_valorant_priority', '恢复')} sx={{fontSize:'0.8rem', color: 'text.secondary'}}>撤销</Button>
                   </Box>
-                </Box>
+                  </Box>
               </ClashCard>
 
               <ClashCard title="注册表修改 (慎用)" icon={<WarningIcon />} danger>
-                <Typography variant="caption" color="error" mb={2} display="block" fontWeight="bold">⚠️ 警告：修改注册表可能导致反作弊异常或封号。</Typography>
-                <Box display="flex" gap={1} mb={2}>
+                  <Typography variant="caption" color="error" mb={2} display="block" fontWeight="bold">⚠️ 警告：修改注册表可能导致反作弊异常或封号。</Typography>
+                  <Box display="flex" gap={1} mb={2}>
                   <Button variant="contained" fullWidth color="error" onClick={() => runRegistryCommand('lower_ace_priority', 'ACE 降权')} sx={{fontSize:'0.8rem'}}>🔥 永久降权</Button>
-                  <Button variant="outlined" color="inherit" onClick={() => runRegistryCommand('reset_ace_priority', '恢复默认')} sx={{fontSize:'0.8rem'}}>恢复</Button>
-                </Box>
-                <Button fullWidth variant="text" size="small" startIcon={<ShieldIcon />} onClick={() => runRegistryCommand('check_registry_priority', '检查状态')} sx={{ color: 'text.secondary', fontSize:'0.8rem' }}>检查 ACE 状态</Button>
+                  <Button variant="outlined" color="inherit" onClick={() => runRegistryCommand('reset_ace_priority', '恢复默认')} sx={{fontSize:'0.8rem', color: 'text.primary', borderColor: 'divider'}}>恢复</Button>
+                  </Box>
+                  <Button fullWidth variant="text" size="small" startIcon={<ShieldIcon />} onClick={() => runRegistryCommand('check_registry_priority', '检查状态')} sx={{ color: 'text.secondary', fontSize:'0.8rem' }}>检查 ACE 状态</Button>
               </ClashCard>
-            </Box>
+              </Box>
           </Box>
         </Box>
       </Box>

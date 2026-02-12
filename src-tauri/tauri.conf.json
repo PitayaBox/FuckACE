@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "PitayaBox",
-  "version": "0.1.0",
+  "version": "0.5.3",
   "identifier": "com.shshouse.PitayaBox",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -14,12 +14,14 @@
     "windows": [
       {
         "title": "PitayaBox",
-        "width": 900,
-        "height": 700,
+        "width": 960,
+        "height": 720,
         "resizable": true,
         "fullscreen": false,
-        "closable": true,
-        "skipTaskbar": false
+        "decorations": true,
+        "center": true,
+        "transparent": false,
+        "theme": "Dark"
       }
     ],
     "security": {
@@ -35,11 +37,6 @@
           ]
         }
       ]
-    }
-  },
-  "plugins": {
-    "shell": {
-      "open": true
     }
   },
   "bundle": {
@@ -52,33 +49,5 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
-  },
-  "app": {
-    "withGlobalTauri": true,
-    "windows": [
-      {
-        "title": "PitayaBox",
-        "width": 900,
-        "height": 700,
-        "resizable": true,
-        "fullscreen": false,
-        "closable": true,
-        "skipTaskbar": false
-      }
-    ],
-    "security": {
-      "csp": null,
-      "capabilities": [
-        {
-          "identifier": "main-capability",
-          "windows": ["main"],
-          "permissions": [
-            "core:default",
-            "shell:default",
-            "process:allow-exit"
-          ]
-        }
-      ]
-    }
   }
 }

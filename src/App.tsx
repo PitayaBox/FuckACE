@@ -1,20 +1,19 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
 import {
   Paper, Typography, Button, Box, Chip, Divider, ThemeProvider, createTheme, CssBaseline, Avatar, Switch,
-  FormControlLabel, IconButton, useMediaQuery, GlobalStyles, Dialog, DialogTitle,
+  FormControlLabel, IconButton, GlobalStyles, Dialog, DialogTitle,
   DialogContent, DialogContentText, DialogActions, TextField, Tooltip, styled, SwitchProps, useTheme
 } from '@mui/material';
-// 引入图标 (已移除无用的窗口控制图标)
+// 引入窗口控制图标 (已移除无用的 Minimize/Maximize/Close)
 import {
   PlayArrow as StartIcon, DarkMode as DarkModeIcon, LightMode as LightModeIcon,
   Tune as ActiveIcon, Terminal as TerminalIcon,
   Warning as WarningIcon,
   InfoOutlined as InfoIcon,
   SportsEsports as GameIcon, Shield as ShieldIcon,
-  GitHub as GitHubIcon, PowerSettingsNew as QuitIcon,
+  GitHub as GitHubIcon,
   Memory as MemoryIcon, Speed as SpeedIcon,
   Storage as StorageIcon, Bolt as BoltIcon
 } from '@mui/icons-material';
@@ -53,12 +52,9 @@ interface ProcessPerformance { pid: number; name: string; cpu_usage: number; mem
 
 function App() {
   const [targetCore, setTargetCore] = useState<number | null>(null);
-  const [processStatus, setProcessStatus] = useState<ProcessStatus | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(false);
-  const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
   const [darkMode, setDarkMode] = useState(true); 
-  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const [performance, setPerformance] = useState<ProcessPerformance[]>([]);
   
@@ -117,7 +113,6 @@ function App() {
       const result = await invoke<ProcessStatus>('restrict_processes', {
         enableCpuAffinity, enableProcessPriority, enableEfficiencyMode, enableIoPriority, enableMemoryPriority 
       });
-      setProcessStatus(result);
       if (result.target_core) setTargetCore(result.target_core);
       if (!silent) addLog(result.message);
     } catch (e) { if (!silent) addLog(`失败: ${e}`); }
@@ -139,11 +134,9 @@ function App() {
   useEffect(() => {
     const hasAgreed = localStorage.getItem('pitayabox_disclaimer_agreed_v18'); 
     if (hasAgreed !== 'true') setShowDisclaimer(true);
-    // 改回只监听关闭，不再需要处理双标题栏的逻辑
     const unlistenPromise = listen('tauri://close-requested', () => setShowExitDialog(true));
     addLog('核心服务已就绪');
     invoke<SystemInfo>('get_system_info').then(info => {
-        setSystemInfo(info);
         if (info.cpu_logical_cores > 0) setTargetCore(info.cpu_logical_cores - 1);
     });
     invoke<boolean>('check_autostart').then(setAutoStartEnabled);
@@ -198,7 +191,8 @@ function App() {
     </Box>
   );
 
-  // UI 组件
+  // ❌ 彻底删除了 CustomTitleBar 组件定义
+
   const ClashCard = ({ children, title, icon, action, danger = false, color="default" }: any) => (
     <Paper sx={{ p: 0, height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'background.paper', position: 'relative', overflow: 'hidden' }}>
       <Box sx={{ height: 3, width: '100%', bgcolor: danger ? '#f56c6c' : (color === 'blue' ? '#409eff' : (color === 'green' ? '#67c23a' : 'transparent')) }} />
@@ -287,117 +281,121 @@ function App() {
         </DialogActions>
       </Dialog>
 
-      <Box sx={{ height: '100vh', display: 'flex', overflow: 'hidden', bgcolor: 'background.default', color: 'text.primary' }}>
+      <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', bgcolor: 'background.default', color: 'text.primary' }}>
         
-        {/* 左侧侧边栏 */}
-        <Box sx={{ width: 260, display: 'flex', flexDirection: 'column', bgcolor: 'background.paper', borderRight: 1, borderColor: 'divider' }}>
-          
-          <Box p={3} pb={2} display="flex" flexDirection="column" justifyContent="center" alignItems="center">
-              <Avatar src="/logo.png" variant="rounded" sx={{ width: 200, height: 90, mb: 1.5 }} />
-              <Typography variant="h6" fontWeight="bold" sx={{ fontSize: '1rem', letterSpacing: 1, color: 'text.primary' }}>
-                  PitayaBox
-              </Typography>
-          </Box>
+        {/* 已移除 CustomTitleBar */}
 
-          <Box px={3} py={2}>
-              <Typography variant="caption" fontWeight="bold" color="text.secondary" mb={1} display="block">概览</Typography>
-              <Box p={2} borderRadius={2} bgcolor="background.default" mb={2} border={1} borderColor="divider">
-                  <Box display="flex" alignItems="center" gap={1} mb={0.5}><MemoryIcon fontSize="small" color="primary"/><Typography variant="caption" color="text.secondary">目标核心</Typography></Box>
-                  <Typography variant="h4" fontWeight="bold" color="primary.main">#{targetCore !== null ? targetCore : '-'}</Typography>
-              </Box>
-          </Box>
+        <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+            {/* 左侧侧边栏 */}
+            <Box sx={{ width: 260, display: 'flex', flexDirection: 'column', bgcolor: 'background.paper', borderRight: 1, borderColor: 'divider' }}>
+            
+            <Box p={3} pb={2} display="flex" flexDirection="column" justifyContent="center" alignItems="center">
+                <Avatar src="/logo.png" variant="rounded" sx={{ width: 64, height: 64, mb: 1.5 }} />
+                <Typography variant="h6" fontWeight="bold" sx={{ fontSize: '1rem', letterSpacing: 1, color: 'text.primary' }}>
+                    火龙果纸箱
+                </Typography>
+            </Box>
 
-          <Box flex={1} overflow="auto" px={3}>
-              <Typography variant="caption" fontWeight="bold" color="text.secondary" mb={1} display="block">进程雷达</Typography>
-              {performance.map(p => (
-              <Box key={p.pid} mb={1} p={1} borderRadius={1} bgcolor="background.default" display="flex" justifyContent="space-between" alignItems="center" border={1} borderColor="divider">
-                  <Box><Typography variant="body2" fontSize="0.8rem" fontWeight="bold" color="text.primary">{p.name}</Typography></Box>
-                  <Chip label={`${p.cpu_usage.toFixed(0)}%`} size="small" sx={{ height: 18, fontSize: '0.7rem', bgcolor: p.cpu_usage > 5 ? '#f56c6c' : '#67c23a', color: '#fff' }} />
-              </Box>
-              ))}
-          </Box>
+            <Box px={3} py={2}>
+                <Typography variant="caption" fontWeight="bold" color="text.secondary" mb={1} display="block">概览</Typography>
+                <Box p={2} borderRadius={2} bgcolor="background.default" mb={2} border={1} borderColor="divider">
+                    <Box display="flex" alignItems="center" gap={1} mb={0.5}><MemoryIcon fontSize="small" color="primary"/><Typography variant="caption" color="text.secondary">目标核心</Typography></Box>
+                    <Typography variant="h4" fontWeight="bold" color="primary.main">#{targetCore !== null ? targetCore : '-'}</Typography>
+                </Box>
+            </Box>
 
-          <Box p={2} bgcolor={darkMode ? '#1e1e2e' : '#e0e4e8'} color="text.primary" height={160} sx={{ fontFamily: 'Consolas, monospace', fontSize: '0.75rem', overflowY: 'auto', borderTop: 1, borderColor: 'divider' }} ref={logContainerRef}>
-              <Box display="flex" alignItems="center" gap={1} mb={1} position="sticky" top={0} bgcolor={darkMode ? '#1e1e2e' : '#e0e4e8'}>
-                  <TerminalIcon sx={{ fontSize: 12, color: 'primary.main' }} /> <span style={{color: darkMode ? '#aaa' : '#666', fontWeight:'bold'}}>运行日志</span>
-              </Box>
-              {logs.map(log => (<div key={log.id} style={{ marginBottom: 2, display: 'flex', color: log.message.includes('失败')?'#f56c6c': (darkMode ? '#ccc' : '#333') }}><span style={{ opacity: 0.5, marginRight: 8, minWidth: 50 }}>{log.timestamp.split(' ')[0]}</span><span>{log.message}</span></div>))}
-          </Box>
+            <Box flex={1} overflow="auto" px={3}>
+                <Typography variant="caption" fontWeight="bold" color="text.secondary" mb={1} display="block">进程雷达</Typography>
+                {performance.map(p => (
+                <Box key={p.pid} mb={1} p={1} borderRadius={1} bgcolor="background.default" display="flex" justifyContent="space-between" alignItems="center" border={1} borderColor="divider">
+                    <Box><Typography variant="body2" fontSize="0.8rem" fontWeight="bold" color="text.primary">{p.name}</Typography></Box>
+                    <Chip label={`${p.cpu_usage.toFixed(0)}%`} size="small" sx={{ height: 18, fontSize: '0.7rem', bgcolor: p.cpu_usage > 5 ? '#f56c6c' : '#67c23a', color: '#fff' }} />
+                </Box>
+                ))}
+            </Box>
 
-          <Box p={1.5} borderTop={1} borderColor="divider" display="flex" justifyContent="flex-start" alignItems="center" bgcolor="background.paper" gap={1}>
-              <Tooltip title="切换模式" arrow><IconButton size="small" onClick={() => setDarkMode(!darkMode)} sx={{color:'text.secondary'}}>{darkMode ? <LightModeIcon fontSize="small"/> : <DarkModeIcon fontSize="small"/>}</IconButton></Tooltip>
-              <Tooltip title="访问 GitHub" arrow><IconButton size="small" onClick={openGitHub} sx={{color:'text.secondary'}}><GitHubIcon fontSize="small"/></IconButton></Tooltip>
-          </Box>
-        </Box>
+            <Box p={2} bgcolor={darkMode ? '#1e1e2e' : '#e0e4e8'} color="text.primary" height={160} sx={{ fontFamily: 'Consolas, monospace', fontSize: '0.75rem', overflowY: 'auto', borderTop: 1, borderColor: 'divider' }} ref={logContainerRef}>
+                <Box display="flex" alignItems="center" gap={1} mb={1} position="sticky" top={0} bgcolor={darkMode ? '#1e1e2e' : '#e0e4e8'}>
+                    <TerminalIcon sx={{ fontSize: 12, color: 'primary.main' }} /> <span style={{color: darkMode ? '#aaa' : '#666', fontWeight:'bold'}}>运行日志</span>
+                </Box>
+                {logs.map(log => (<div key={log.id} style={{ marginBottom: 2, display: 'flex', color: log.message.includes('失败')?'#f56c6c': (darkMode ? '#ccc' : '#333') }}><span style={{ opacity: 0.5, marginRight: 8, minWidth: 50 }}>{log.timestamp.split(' ')[0]}</span><span>{log.message}</span></div>))}
+            </Box>
 
-        {/* 右侧内容区 */}
-        <Box flex={1} p={3} overflow="auto" display="flex" flexDirection="column" gap={3} bgcolor="background.default">
-          <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="h5" fontWeight="bold" color="text.primary">控制面板</Typography>
-              <Box display="flex" flexDirection="column" alignItems="flex-end">
-              <Button variant="contained" startIcon={<StartIcon />} onClick={() => executeRestriction(false)} disabled={loading} sx={{ px: 3, py:0.8, borderRadius: 2, background: 'linear-gradient(90deg, #409eff 0%, #3a8ee6 100%)', boxShadow: '0 4px 12px rgba(64,158,255,0.3)' }}>一键优化</Button>
-              <Typography variant="caption" color="text.secondary" sx={{mt:0.5, fontSize:'0.75rem', fontWeight:'bold', color: 'error.main'}}>
-                  请在进入游戏大厅后点击 (非永久生效)
-              </Typography>
-              </Box>
-          </Box>
+            <Box p={1.5} borderTop={1} borderColor="divider" display="flex" justifyContent="flex-start" alignItems="center" bgcolor="background.paper" gap={1}>
+                <Tooltip title="切换模式" arrow><IconButton size="small" onClick={() => setDarkMode(!darkMode)} sx={{color:'text.secondary'}}>{darkMode ? <LightModeIcon fontSize="small"/> : <DarkModeIcon fontSize="small"/>}</IconButton></Tooltip>
+                <Tooltip title="访问 GitHub" arrow><IconButton size="small" onClick={openGitHub} sx={{color:'text.secondary'}}><GitHubIcon fontSize="small"/></IconButton></Tooltip>
+            </Box>
+            </Box>
 
-          <Box display="grid" gridTemplateColumns={{ xs: '1fr', lg: '3fr 2fr' }} gap={3}>
-              <CoreCard>
-                  <CoreSettingRow checked={enableCpuAffinity} onChange={(e:any)=>setEnableCpuAffinity(e.target.checked)} label="CPU 亲和性锁定" desc="强制绑定至最后一核" icon={<MemoryIcon/>} />
-                  <CoreSettingRow checked={enableProcessPriority} onChange={(e:any)=>setEnableProcessPriority(e.target.checked)} label="进程优先级压制" desc="设为空闲(Idle)级别" icon={<SpeedIcon/>} />
-                  <CoreSettingRow checked={enableEfficiencyMode} onChange={(e:any)=>setEnableEfficiencyMode(e.target.checked)} label="Windows 效率模式" desc="系统级能耗限制 (EcoQoS)" icon={<BoltIcon/>} />
-                  <CoreSettingRow checked={enableIoPriority} onChange={(e:any)=>setEnableIoPriority(e.target.checked)} label="I/O 读写降权" desc="降低硬盘占用权重" icon={<StorageIcon/>} />
-                  <CoreSettingRow checked={enableMemoryPriority} onChange={(e:any)=>setEnableMemoryPriority(e.target.checked)} label="内存驻留降权" desc="降低RAM分配优先级" icon={<MemoryIcon/>} />
-                  <Box mt={2.5} p={2} bgcolor={darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)"} borderRadius={2} display="flex" alignItems="center" justifyContent="space-between">
-                      <Box display="flex" flexDirection="column">
-                          <Box display="flex" alignItems="center" gap={1}>
-                              <Typography variant="body2" fontWeight="bold" color="text.primary">自动化托管</Typography>
-                              <Chip size="small" label="SERVICE" sx={{height:16, fontSize:9, fontWeight:'bold', bgcolor:'primary.main', color:'#fff'}} />
-                          </Box>
-                          <Typography variant="caption" sx={{color:'text.secondary', fontSize:'0.7rem', mt:0.5}}>开机自启 & 循环扫描</Typography>
-                      </Box>
-                      <Box display="flex" gap={2}>
-                          <FormControlLabel control={<Figure1Switch size="small" checked={autoStartEnabled} onChange={toggleAutoStart} />} label={<Typography variant="caption" fontWeight="bold" color="text.primary">自启</Typography>} sx={{mr:0}} />
-                          <FormControlLabel control={<Figure1Switch size="small" checked={enableAutoLimit} onChange={(e:any)=>setEnableAutoLimit(e.target.checked)} />} label={<Typography variant="caption" fontWeight="bold" color="text.primary">循环</Typography>} sx={{mr:0}} />
-                      </Box>
-                  </Box>
-              </CoreCard>
+            {/* 右侧内容区 */}
+            <Box flex={1} p={3} overflow="auto" display="flex" flexDirection="column" gap={3} bgcolor="background.default">
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+                <Typography variant="h5" fontWeight="bold" color="text.primary">控制面板</Typography>
+                <Box display="flex" flexDirection="column" alignItems="flex-end">
+                <Button variant="contained" startIcon={<StartIcon />} onClick={() => executeRestriction(false)} disabled={loading} sx={{ px: 3, py:0.8, borderRadius: 2, background: 'linear-gradient(90deg, #409eff 0%, #3a8ee6 100%)', boxShadow: '0 4px 12px rgba(64,158,255,0.3)' }}>一键优化</Button>
+                <Typography variant="caption" color="text.secondary" sx={{mt:0.5, fontSize:'0.75rem', fontWeight:'bold', color: 'error.main'}}>
+                    请在进入游戏大厅后点击 (非永久生效)
+                </Typography>
+                </Box>
+            </Box>
 
-              <Box display="flex" flexDirection="column" gap={3}>
-              <ClashCard title="游戏专项优化" icon={<GameIcon />} color="green" 
-                action={
-                  <Tooltip title={GameOptTooltipContent} arrow placement="left">
-                    <IconButton size="small" sx={{color:'text.secondary', cursor: 'help'}}><InfoIcon fontSize="small" /></IconButton>
-                  </Tooltip>
-                }>
-                  <Box mb={2} mt={1}>
-                  <Box display="flex" justifyContent="space-between" mb={1}><Typography variant="body2" fontWeight="bold" color="text.primary">三角洲行动</Typography></Box>
-                  <Box display="flex" gap={1}>
-                      <Button variant="contained" fullWidth size="small" color="secondary" onClick={() => runRegistryCommand('raise_delta_priority', '三角洲优化')} sx={{fontSize:'0.8rem', py:0.5}}>优化</Button>
-                      <Button variant="text" color="inherit" size="small" onClick={() => runRegistryCommand('reset_delta_priority', '恢复')} sx={{fontSize:'0.8rem', color: 'text.secondary'}}>撤销</Button>
-                  </Box>
-                  </Box>
-                  <Divider sx={{ my: 1.5 }} />
-                  <Box mb={1}>
-                  <Box display="flex" justifyContent="space-between" mb={1}><Typography variant="body2" fontWeight="bold" color="text.primary">无畏契约</Typography></Box>
-                  <Box display="flex" gap={1}>
-                      <Button variant="contained" fullWidth size="small" color="secondary" onClick={() => runRegistryCommand('modify_valorant_registry_priority', '无畏契约优化')} sx={{fontSize:'0.8rem', py:0.5}}>优化</Button>
-                      <Button variant="text" color="inherit" size="small" onClick={() => runRegistryCommand('reset_valorant_priority', '恢复')} sx={{fontSize:'0.8rem', color: 'text.secondary'}}>撤销</Button>
-                  </Box>
-                  </Box>
-              </ClashCard>
+            <Box display="grid" gridTemplateColumns={{ xs: '1fr', lg: '3fr 2fr' }} gap={3}>
+                <CoreCard>
+                    <CoreSettingRow checked={enableCpuAffinity} onChange={(e:any)=>setEnableCpuAffinity(e.target.checked)} label="CPU 亲和性锁定" desc="强制绑定至最后一核" icon={<MemoryIcon/>} />
+                    <CoreSettingRow checked={enableProcessPriority} onChange={(e:any)=>setEnableProcessPriority(e.target.checked)} label="进程优先级压制" desc="设为空闲(Idle)级别" icon={<SpeedIcon/>} />
+                    <CoreSettingRow checked={enableEfficiencyMode} onChange={(e:any)=>setEnableEfficiencyMode(e.target.checked)} label="Windows 效率模式" desc="系统级能耗限制 (EcoQoS)" icon={<BoltIcon/>} />
+                    <CoreSettingRow checked={enableIoPriority} onChange={(e:any)=>setEnableIoPriority(e.target.checked)} label="I/O 读写降权" desc="降低硬盘占用权重" icon={<StorageIcon/>} />
+                    <CoreSettingRow checked={enableMemoryPriority} onChange={(e:any)=>setEnableMemoryPriority(e.target.checked)} label="内存驻留降权" desc="降低RAM分配优先级" icon={<MemoryIcon/>} />
+                    <Box mt={2.5} p={2} bgcolor={darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)"} borderRadius={2} display="flex" alignItems="center" justifyContent="space-between">
+                        <Box display="flex" flexDirection="column">
+                            <Box display="flex" alignItems="center" gap={1}>
+                                <Typography variant="body2" fontWeight="bold" color="text.primary">自动化托管</Typography>
+                                <Chip size="small" label="SERVICE" sx={{height:16, fontSize:9, fontWeight:'bold', bgcolor:'primary.main', color:'#fff'}} />
+                            </Box>
+                            <Typography variant="caption" sx={{color:'text.secondary', fontSize:'0.7rem', mt:0.5}}>开机自启 & 循环扫描</Typography>
+                        </Box>
+                        <Box display="flex" gap={2}>
+                            <FormControlLabel control={<Figure1Switch size="small" checked={autoStartEnabled} onChange={toggleAutoStart} />} label={<Typography variant="caption" fontWeight="bold" color="text.primary">自启</Typography>} sx={{mr:0}} />
+                            <FormControlLabel control={<Figure1Switch size="small" checked={enableAutoLimit} onChange={(e:any)=>setEnableAutoLimit(e.target.checked)} />} label={<Typography variant="caption" fontWeight="bold" color="text.primary">循环</Typography>} sx={{mr:0}} />
+                        </Box>
+                    </Box>
+                </CoreCard>
 
-              <ClashCard title="注册表修改 (慎用)" icon={<WarningIcon />} danger>
-                  <Typography variant="caption" color="error" mb={2} display="block" fontWeight="bold">⚠️ 警告：修改注册表可能导致反作弊异常或封号。</Typography>
-                  <Box display="flex" gap={1} mb={2}>
-                  <Button variant="contained" fullWidth color="error" onClick={() => runRegistryCommand('lower_ace_priority', 'ACE 降权')} sx={{fontSize:'0.8rem'}}>🔥 永久降权</Button>
-                  <Button variant="outlined" color="inherit" onClick={() => runRegistryCommand('reset_ace_priority', '恢复默认')} sx={{fontSize:'0.8rem', color: 'text.primary', borderColor: 'divider'}}>恢复</Button>
-                  </Box>
-                  <Button fullWidth variant="text" size="small" startIcon={<ShieldIcon />} onClick={() => runRegistryCommand('check_registry_priority', '检查状态')} sx={{ color: 'text.secondary', fontSize:'0.8rem' }}>检查 ACE 状态</Button>
-              </ClashCard>
-              </Box>
-          </Box>
+                <Box display="flex" flexDirection="column" gap={3}>
+                <ClashCard title="游戏专项优化" icon={<GameIcon />} color="green" 
+                  action={
+                    <Tooltip title={GameOptTooltipContent} arrow placement="left">
+                      <IconButton size="small" sx={{color:'text.secondary', cursor: 'help'}}><InfoIcon fontSize="small" /></IconButton>
+                    </Tooltip>
+                  }>
+                    <Box mb={2} mt={1}>
+                    <Box display="flex" justifyContent="space-between" mb={1}><Typography variant="body2" fontWeight="bold" color="text.primary">三角洲行动</Typography></Box>
+                    <Box display="flex" gap={1}>
+                        <Button variant="contained" fullWidth size="small" color="secondary" onClick={() => runRegistryCommand('raise_delta_priority', '三角洲优化')} sx={{fontSize:'0.8rem', py:0.5}}>优化</Button>
+                        <Button variant="text" color="inherit" size="small" onClick={() => runRegistryCommand('reset_delta_priority', '恢复')} sx={{fontSize:'0.8rem', color: 'text.secondary'}}>撤销</Button>
+                    </Box>
+                    </Box>
+                    <Divider sx={{ my: 1.5 }} />
+                    <Box mb={1}>
+                    <Box display="flex" justifyContent="space-between" mb={1}><Typography variant="body2" fontWeight="bold" color="text.primary">无畏契约</Typography></Box>
+                    <Box display="flex" gap={1}>
+                        <Button variant="contained" fullWidth size="small" color="secondary" onClick={() => runRegistryCommand('modify_valorant_registry_priority', '无畏契约优化')} sx={{fontSize:'0.8rem', py:0.5}}>优化</Button>
+                        <Button variant="text" color="inherit" size="small" onClick={() => runRegistryCommand('reset_valorant_priority', '恢复')} sx={{fontSize:'0.8rem', color: 'text.secondary'}}>撤销</Button>
+                    </Box>
+                    </Box>
+                </ClashCard>
+
+                <ClashCard title="注册表修改 (慎用)" icon={<WarningIcon />} danger>
+                    <Typography variant="caption" color="error" mb={2} display="block" fontWeight="bold">⚠️ 警告：修改注册表可能导致反作弊异常或封号。</Typography>
+                    <Box display="flex" gap={1} mb={2}>
+                    <Button variant="contained" fullWidth color="error" onClick={() => runRegistryCommand('lower_ace_priority', 'ACE 降权')} sx={{fontSize:'0.8rem'}}>🔥 永久降权</Button>
+                    <Button variant="outlined" color="inherit" onClick={() => runRegistryCommand('reset_ace_priority', '恢复默认')} sx={{fontSize:'0.8rem', color: 'text.primary', borderColor: 'divider'}}>恢复</Button>
+                    </Box>
+                    <Button fullWidth variant="text" size="small" startIcon={<ShieldIcon />} onClick={() => runRegistryCommand('check_registry_priority', '检查状态')} sx={{ color: 'text.secondary', fontSize:'0.8rem' }}>检查 ACE 状态</Button>
+                </ClashCard>
+                </Box>
+            </Box>
+            </Box>
         </Box>
       </Box>
     </ThemeProvider>
